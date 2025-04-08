@@ -63,13 +63,35 @@ def binom_sum(b,e,m):
     for j in 0,1,...,e
     it is the proba of doing at most e errors among m Bernoulli iid experiences with error proba b
     """
-    v = np.array([
-        np.exp(
-            binomial_log(m, j)
-            +j*np.log(b)
-            +(m-j)*np.log(1-b)) for j in range(e+1)])
-    return np.sum(v)
+    if e < m:
+        v = np.array([
+            np.exp(
+                binomial_log(m, j)
+                +j*np.log(b)
+                +(m-j)*np.log(1-b)) for j in range(e+1)])
+        return np.sum(v)
+    elif e == m:
+        return 1
+    else:
+        raise ValueError
+    
 
+'''
+def B_star(delta, e, m, eps=1e-6, b1=0, b2=1):
+    """
+    b_star iterative computation by dichotomy search over [0,1], given probability delta
+    approximate solution at eps (in terms of FUN images)
+    """
+    b = (b1+b2)/2 # middle of segment
+    while abs(binom_sum(b,e,m) - delta) >= eps:
+        if binom_sum(b,e,m) <= delta - eps:
+            b2 = b
+        else:
+            b1 = b
+        b = (b1+b2)/2
+    
+    return b
+'''
 
 
 def B_star(delta, e, m, eps=1e-6, b1=0, b2=1):
@@ -77,6 +99,8 @@ def B_star(delta, e, m, eps=1e-6, b1=0, b2=1):
     b_star recursive computation by dichotomy search over [0,1], given probability delta
     approximate solution at eps (in terms of FUN images)
     """
+    if e==m:
+        raise ValueError
     b = (b1+b2)/2 # middle of segment
     if abs(binom_sum(b,e,m) - delta) < eps:
         return b
@@ -92,24 +116,38 @@ def SGR(delta, r_star, Sm):
     Selection with Guaranteed Risk (SGR) algorithm
     from Geifman el Yaniv 2017
     """
+    
     m = Sm.shape[0]
     zmin = 0
     zmax = m
     for i in range(int(np.log(m)/np.log(2))):
+        
         z = int((zmin+zmax)/2)
         theta = Sm.SR[z]
         selected_samples = Sm.loc[Sm.SR > theta]
         selected_errs_count = (selected_samples.y_pred != selected_samples.y_true).sum()
 
+        if selected_errs_count == 0: # if no error, then we stop since algo wont go any further
+            return {'theta_star' : old_theta,
+                    'b_star' : b_star,
+                    'delta' : delta,
+                    'coverage' : old_selected_samples.shape[0]/m,
+                    'risk' : (old_selected_samples.y_true != old_selected_samples.y_pred).sum()/old_selected_samples.shape[0]}
+
         b_star = B_star(delta/int(np.log(m)/np.log(2)), 
                         selected_errs_count,
                         selected_samples.shape[0])
+
         if b_star < r_star:
             zmax = z
         else:
             zmin = z
 
+        old_theta = theta # saving old theta before overwriting
+        old_selected_samples = selected_samples # same idea
+    
     return {'theta_star' : theta,
             'b_star' : b_star,
             'delta' : delta,
-            'coverage' : Sm.loc[Sm.SR > theta].shape[0]/m}
+            'coverage' : selected_samples.shape[0]/m,
+            'risk' : (selected_samples.y_true != selected_samples.y_pred).sum()/selected_samples.shape[0]}
