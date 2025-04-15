@@ -127,27 +127,71 @@ def SGR(delta, r_star, Sm):
         selected_samples = Sm.loc[Sm.SR > theta]
         selected_errs_count = (selected_samples.y_pred != selected_samples.y_true).sum()
 
-        if selected_errs_count == 0: # if no error, then we stop since algo wont go any further
-            return {'theta_star' : old_theta,
-                    'b_star' : b_star,
-                    'delta' : delta,
-                    'coverage' : old_selected_samples.shape[0]/m,
-                    'risk' : (old_selected_samples.y_true != old_selected_samples.y_pred).sum()/old_selected_samples.shape[0]}
+        if selected_errs_count == 0: # if no error, then we stop since algo is stuck anyways...
+            try:
+                return {'theta_star' : old_theta,
+                        'b_star' : b_star,
+                        'delta' : delta,
+                        'coverage' : old_selected_samples.shape[0]/m,
+                        'risk' : (old_selected_samples.y_true != old_selected_samples.y_pred).sum()/old_selected_samples.shape[0]}
+            except:
+                zmax = z
 
-        b_star = B_star(delta/int(np.log(m)/np.log(2)), 
-                        selected_errs_count,
-                        selected_samples.shape[0])
-
-        if b_star < r_star:
-            zmax = z
         else:
-            zmin = z
+            b_star = B_star(delta/int(np.log(m)/np.log(2)), 
+                            selected_errs_count,
+                            selected_samples.shape[0])
+            if b_star < r_star:
+                zmax = z
+            else:
+                zmin = z
 
-        old_theta = theta # saving old theta before overwriting
-        old_selected_samples = selected_samples # same idea
-    
+            old_theta = theta # saving old theta before overwriting
+            old_selected_samples = selected_samples # same idea
+        
     return {'theta_star' : theta,
             'b_star' : b_star,
             'delta' : delta,
             'coverage' : selected_samples.shape[0]/m,
             'risk' : (selected_samples.y_true != selected_samples.y_pred).sum()/selected_samples.shape[0]}
+
+
+
+def SGR_at_risks(train_set,test_set, delta = 0.001, desired_risks = [i/100 for i in range(1,15)]):
+    """
+    Compute SGR risk bound and actual risks on training and test sets, for different target risks (r_star)
+    wp of exceeding r_star < delta
+    """
+    results = []
+    for r_star in desired_risks:
+
+        sgr_dico = SGR(delta, r_star, train_set)        
+        theta_star = sgr_dico['theta_star']
+        covered_test_set = test_set.loc[test_set.SR > theta_star]
+        results.append({'desired_risk' : r_star,
+                        'risk_bound' : sgr_dico['b_star'],
+                        'train_risk' : sgr_dico['risk'],
+                        'train_coverage' : sgr_dico['coverage'],
+                        'test_risk' : (covered_test_set.y_true != covered_test_set.y_pred).sum()/covered_test_set.shape[0],
+                        'test_coverage' : covered_test_set.shape[0]/test_set.shape[0]})
+    
+    return pd.DataFrame(results)
+
+
+
+def sample_with_proportion(df, label_col, proportion_1, sample_size):
+    # Separate classes
+    ones = df[df[label_col] == 1]
+    zeros = df[df[label_col] == 0]
+
+    # Calculate how many 1s and 0s you need
+    n_ones = int(sample_size * proportion_1)
+    n_zeros = sample_size - n_ones
+
+    # Sample from each class
+    sampled_ones = ones.sample(n=n_ones, random_state=42)
+    sampled_zeros = zeros.sample(n=n_zeros, random_state=42)
+
+    # Concatenate and shuffle
+    sampled_df = pd.concat([sampled_ones, sampled_zeros]).sample(frac=1, random_state=42).reset_index(drop=True)
+    return sampled_df
