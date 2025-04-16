@@ -108,10 +108,34 @@ def B_star(delta, e, m, eps=1e-6, b1=0, b2=1):
         return B_star(delta, e, m, b1=b1, b2=b)
     else:
         return B_star(delta, e, m, b1=b, b2=b2)
+
+
+
+def emp_errs_count(samples, loss = 'standard'):
+    if loss == 'standard':
+        return (samples.y_pred != samples.y_true).sum()
+    elif loss == 'typeI':
+        return ((samples.y_pred == 1) & (samples.y_true == 0)).sum()
+    elif loss == 'typeII':
+        return ((samples.y_pred == 0) & (samples.y_true == 1)).sum()
+    else:
+        raise ValueError("loss must be either 'standard', 'typeI' or 'typeII'")
     
 
 
-def SGR(delta, r_star, Sm):
+def emp_risk(samples, loss = 'standard'):
+    if loss == 'standard':
+        return emp_errs_count(samples)/samples.shape[0]
+    elif loss == 'typeI':
+        return emp_errs_count(samples, loss = 'typeI')/samples.y_pred.sum()
+    elif loss == 'typeII':
+        return emp_errs_count(samples, loss = 'typeII')/(samples.y_pred == 0).sum()
+    else:
+        raise ValueError("loss must be either 'standard', 'typeI' or 'typeII'")
+
+
+
+def SGR(delta, r_star, Sm, loss = 'standard'):
     """
     Selection with Guaranteed Risk (SGR) algorithm
     from Geifman el Yaniv 2017
@@ -125,17 +149,17 @@ def SGR(delta, r_star, Sm):
         z = int((zmin+zmax)/2)
         theta = Sm.SR[z]
         selected_samples = Sm.loc[Sm.SR > theta]
-        selected_errs_count = (selected_samples.y_pred != selected_samples.y_true).sum()
+        selected_errs_count = emp_errs_count(selected_samples, loss = loss)
 
         if selected_errs_count == 0: # if no error, then we stop since algo is stuck anyways...
             try:
                 return {'theta_star' : old_theta,
-                        'b_star' : b_star,
+                        'b_star' : old_b_star,
                         'delta' : delta,
                         'coverage' : old_selected_samples.shape[0]/m,
-                        'risk' : (old_selected_samples.y_true != old_selected_samples.y_pred).sum()/old_selected_samples.shape[0]}
+                        'risk' : emp_risk(old_selected_samples, loss = loss)}
             except:
-                zmax = z
+                return {}
 
         else:
             b_star = B_star(delta/int(np.log(m)/np.log(2)), 
@@ -146,6 +170,7 @@ def SGR(delta, r_star, Sm):
             else:
                 zmin = z
 
+            old_b_star = b_star
             old_theta = theta # saving old theta before overwriting
             old_selected_samples = selected_samples # same idea
         
@@ -153,11 +178,11 @@ def SGR(delta, r_star, Sm):
             'b_star' : b_star,
             'delta' : delta,
             'coverage' : selected_samples.shape[0]/m,
-            'risk' : (selected_samples.y_true != selected_samples.y_pred).sum()/selected_samples.shape[0]}
+            'risk' : emp_risk(selected_samples, loss = loss)}
 
 
 
-def SGR_at_risks(train_set,test_set, delta = 0.001, desired_risks = [i/100 for i in range(1,15)]):
+def SGR_at_risks(train_set,test_set, delta = 0.001, desired_risks = [i/100 for i in range(1,15)], loss = 'standard'):
     """
     Compute SGR risk bound and actual risks on training and test sets, for different target risks (r_star)
     wp of exceeding r_star < delta
@@ -165,15 +190,16 @@ def SGR_at_risks(train_set,test_set, delta = 0.001, desired_risks = [i/100 for i
     results = []
     for r_star in desired_risks:
 
-        sgr_dico = SGR(delta, r_star, train_set)        
-        theta_star = sgr_dico['theta_star']
-        covered_test_set = test_set.loc[test_set.SR > theta_star]
-        results.append({'desired_risk' : r_star,
-                        'risk_bound' : sgr_dico['b_star'],
-                        'train_risk' : sgr_dico['risk'],
-                        'train_coverage' : sgr_dico['coverage'],
-                        'test_risk' : (covered_test_set.y_true != covered_test_set.y_pred).sum()/covered_test_set.shape[0],
-                        'test_coverage' : covered_test_set.shape[0]/test_set.shape[0]})
+        sgr_dico = SGR(delta, r_star, train_set, loss = loss)   
+        if sgr_dico != {}:
+            theta_star = sgr_dico['theta_star']
+            covered_test_set = test_set.loc[test_set.SR > theta_star]
+            results.append({'desired_risk' : r_star,
+                            'risk_bound' : sgr_dico['b_star'],
+                            'train_risk' : sgr_dico['risk'],
+                            'train_coverage' : sgr_dico['coverage'],
+                            'test_risk' : emp_risk(covered_test_set, loss = loss),
+                            'test_coverage' : covered_test_set.shape[0]/test_set.shape[0]})
     
     return pd.DataFrame(results)
 
