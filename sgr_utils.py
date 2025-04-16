@@ -6,6 +6,7 @@ import pickle
 import pandas as pd
 import torchvision.transforms as transforms
 import torchvision.datasets as datasets
+from torch.utils.data import Subset
 import math
 import scipy.special
 import random as rd
@@ -20,8 +21,21 @@ from scipy.special import gammaln
 
 
 
+def filter_classes(dataset, allowed_classes):
+    """
+    Function to filter CIFAR dataset by class labels
+    """
+    indices = [i for i, (_, label) in enumerate(dataset) if label in allowed_classes]
+    return Subset(dataset, indices)
+
+
+
 def prepare_sgr_dico(dataloader, model, device, T):
-    
+    """
+    Prepare dataframe containing exactly the required features to train SGR module
+    true class of each sample, model predicted class, 
+    softmax response (SR) or any other confidence function output 
+    """
     sgr_dico = {'y_true' : np.array([]),
                 'y_pred' : np.array([]),
                 'SR' : np.array([])}
@@ -76,23 +90,6 @@ def binom_sum(b,e,m):
         raise ValueError
     
 
-'''
-def B_star(delta, e, m, eps=1e-6, b1=0, b2=1):
-    """
-    b_star iterative computation by dichotomy search over [0,1], given probability delta
-    approximate solution at eps (in terms of FUN images)
-    """
-    b = (b1+b2)/2 # middle of segment
-    while abs(binom_sum(b,e,m) - delta) >= eps:
-        if binom_sum(b,e,m) <= delta - eps:
-            b2 = b
-        else:
-            b1 = b
-        b = (b1+b2)/2
-    
-    return b
-'''
-
 
 def B_star(delta, e, m, eps=1e-6, b1=0, b2=1):
     """
@@ -127,9 +124,9 @@ def emp_risk(samples, loss = 'standard'):
     if loss == 'standard':
         return emp_errs_count(samples)/samples.shape[0]
     elif loss == 'typeI':
-        return emp_errs_count(samples, loss = 'typeI')/samples.y_pred.sum()
+        return emp_errs_count(samples, loss = 'typeI')/samples.shape[0]
     elif loss == 'typeII':
-        return emp_errs_count(samples, loss = 'typeII')/(samples.y_pred == 0).sum()
+        return emp_errs_count(samples, loss = 'typeII')/samples.shape[0]
     else:
         raise ValueError("loss must be either 'standard', 'typeI' or 'typeII'")
 
@@ -152,15 +149,8 @@ def SGR(delta, r_star, Sm, loss = 'standard'):
         selected_errs_count = emp_errs_count(selected_samples, loss = loss)
 
         if selected_errs_count == 0: # if no error, then we stop since algo is stuck anyways...
-            try:
-                return {'theta_star' : old_theta,
-                        'b_star' : old_b_star,
-                        'delta' : delta,
-                        'coverage' : old_selected_samples.shape[0]/m,
-                        'risk' : emp_risk(old_selected_samples, loss = loss)}
-            except:
                 return {}
-
+        
         else:
             b_star = B_star(delta/int(np.log(m)/np.log(2)), 
                             selected_errs_count,
@@ -170,10 +160,6 @@ def SGR(delta, r_star, Sm, loss = 'standard'):
             else:
                 zmin = z
 
-            old_b_star = b_star
-            old_theta = theta # saving old theta before overwriting
-            old_selected_samples = selected_samples # same idea
-        
     return {'theta_star' : theta,
             'b_star' : b_star,
             'delta' : delta,
