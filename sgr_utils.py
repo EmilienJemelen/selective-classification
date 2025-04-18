@@ -132,7 +132,7 @@ def emp_risk(samples, loss = 'standard'):
 
 
 
-def SGR(delta, r_star, Sm, loss = 'standard'):
+def SGR(delta, r_star, Sm, k, loss = 'standard'):
     """
     Selection with Guaranteed Risk (SGR) algorithm
     from Geifman el Yaniv 2017
@@ -141,7 +141,7 @@ def SGR(delta, r_star, Sm, loss = 'standard'):
     m = Sm.shape[0]
     zmin = 0
     zmax = m
-    for i in range(int(np.log(m)/np.log(2))):
+    for i in range(k):
         
         z = int((zmin+zmax)/2)
         theta = Sm.SR[z]
@@ -152,7 +152,7 @@ def SGR(delta, r_star, Sm, loss = 'standard'):
                 return {}
         
         else:
-            b_star = B_star(delta/int(np.log(m)/np.log(2)), 
+            b_star = B_star(delta/k, 
                             selected_errs_count,
                             selected_samples.shape[0])
             if b_star < r_star:
@@ -168,7 +168,8 @@ def SGR(delta, r_star, Sm, loss = 'standard'):
 
 
 
-def SGR_at_risks(train_set,test_set, delta = 0.001, desired_risks = [i/100 for i in range(1,15)], loss = 'standard'):
+def SGR_at_risks(train_set,test_set, k, delta = 0.001, 
+                 desired_risks = [i/100 for i in range(1,15)], loss = 'standard'):
     """
     Compute SGR risk bound and actual risks on training and test sets, for different target risks (r_star)
     wp of exceeding r_star < delta
@@ -176,7 +177,7 @@ def SGR_at_risks(train_set,test_set, delta = 0.001, desired_risks = [i/100 for i
     results = []
     for r_star in desired_risks:
 
-        sgr_dico = SGR(delta, r_star, train_set, loss = loss)   
+        sgr_dico = SGR(delta, r_star, train_set, k, loss = loss)   
         if sgr_dico != {}:
             theta_star = sgr_dico['theta_star']
             covered_test_set = test_set.loc[test_set.SR > theta_star]
