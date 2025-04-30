@@ -101,6 +101,9 @@ def B_star(delta, e, m, eps=1e-6, b1=0, b2=1):
     """
     if e==m:
         raise ValueError
+    if e==0:
+        return 1-delta**(1/m)
+    
     b = (b1+b2)/2 # middle of segment
     if abs(binom_sum(b,e,m) - delta) < eps:
         return b
@@ -124,6 +127,8 @@ def emp_errs_count(samples, loss = 'standard'):
 
 
 def emp_risk(samples, loss = 'standard'):
+    if samples.shape[0] == 0:
+        raise ValueError
     if loss == 'standard':
         return emp_errs_count(samples)/samples.shape[0]
     elif loss == 'typeI':
@@ -135,7 +140,7 @@ def emp_risk(samples, loss = 'standard'):
 
 
 
-def SGR(delta, r_star, Sm, k, loss = 'standard'):
+def SGR(delta, r_star, Sm, k, loss = 'standard', tolerance = 1e-2):
     """
     Selection with Guaranteed Risk (SGR) algorithm
     from Geifman el Yaniv 2017
@@ -151,23 +156,22 @@ def SGR(delta, r_star, Sm, k, loss = 'standard'):
         selected_samples = Sm.loc[Sm.SR > theta]
         selected_errs_count = emp_errs_count(selected_samples, loss = loss)
 
-        if selected_errs_count == 0: # if no error, then we stop since algo is stuck anyways...
-                return {}
-        
+        b_star = B_star(delta/k, 
+                        selected_errs_count,
+                        selected_samples.shape[0])
+        if b_star < r_star:
+            zmax = z
         else:
-            b_star = B_star(delta/k, 
-                            selected_errs_count,
-                            selected_samples.shape[0])
-            if b_star < r_star:
-                zmax = z
-            else:
-                zmin = z
+            zmin = z
 
-    return {'theta_star' : theta,
-            'b_star' : b_star,
-            'delta' : delta,
-            'coverage' : selected_samples.shape[0]/m,
-            'risk' : emp_risk(selected_samples, loss = loss)}
+    if (b_star < r_star) or abs(b_star - r_star) < tolerance: 
+        return {'theta_star' : theta,
+                'b_star' : b_star,
+                'delta' : delta,
+                'coverage' : selected_samples.shape[0]/m,
+                'risk' : emp_risk(selected_samples, loss = loss)}
+    else:
+        return {}
 
 
 
@@ -184,11 +188,15 @@ def SGR_at_risks(train_set,test_set, k, delta = 0.001,
         if sgr_dico != {}:
             theta_star = sgr_dico['theta_star']
             covered_test_set = test_set.loc[test_set.SR > theta_star]
+            if covered_test_set.shape[0] > 0:
+                test_risk = emp_risk(covered_test_set, loss = loss)
+            else:
+                test_risk = np.nan
             results.append({'desired_risk' : r_star,
                             'risk_bound' : sgr_dico['b_star'],
                             'train_risk' : sgr_dico['risk'],
                             'train_coverage' : sgr_dico['coverage'],
-                            'test_risk' : emp_risk(covered_test_set, loss = loss),
+                            'test_risk' : test_risk,
                             'test_coverage' : covered_test_set.shape[0]/test_set.shape[0]})
     
     return pd.DataFrame(results)
@@ -342,3 +350,26 @@ def count_labels(dataset):
     return {label: counts.get(label, 0) for label in range(2)}
 
 
+
+def integers_log_spacing(start, end, num_points = 40):
+    """
+    Returns a list of integers between `start` and `end` using roughly logarithmic spacing.
+
+    Parameters:
+    - start (int): Start of the range.
+    - end (int): End of the range.
+    - num_points (int): Number of points to sample (default is 40).
+
+    Returns:
+    - list[int]: Logarithmically spaced integers within the range.
+    """
+    all_ints = np.arange(start-1, end+1)
+
+    # Create log-spaced indices over the range of indices (not the values themselves)
+    log_indices = np.logspace(0, np.log10(len(all_ints)), num=num_points, base=10, dtype=int)
+    # Remove duplicates and clip to valid range
+    log_indices = np.unique(np.clip(log_indices, 0, len(all_ints) - 1))
+    # Select from the original array
+    fewer_ints = all_ints[log_indices]
+
+    return fewer_ints.tolist()
