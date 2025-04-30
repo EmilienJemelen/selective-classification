@@ -117,12 +117,12 @@ def B_star(delta, e, m, eps=1e-6, b1=0, b2=1):
 def emp_errs_count(samples, loss = 'standard'):
     if loss == 'standard':
         return (samples.y_pred != samples.y_true).sum()
-    elif loss == 'typeI':
+    elif loss == 'FP':
         return ((samples.y_pred == 1) & (samples.y_true == 0)).sum()
-    elif loss == 'typeII':
+    elif loss == 'FN':
         return ((samples.y_pred == 0) & (samples.y_true == 1)).sum()
     else:
-        raise ValueError("loss must be either 'standard', 'typeI' or 'typeII'")
+        raise ValueError("loss must be either 'standard', 'FP' or 'FN'")
     
 
 
@@ -131,12 +131,16 @@ def emp_risk(samples, loss = 'standard'):
         raise ValueError
     if loss == 'standard':
         return emp_errs_count(samples)/samples.shape[0]
-    elif loss == 'typeI':
-        return emp_errs_count(samples, loss = 'typeI')/samples.shape[0]
-    elif loss == 'typeII':
-        return emp_errs_count(samples, loss = 'typeII')/samples.shape[0]
+    elif loss == 'FP':
+        return emp_errs_count(samples, loss = 'FP')/samples.shape[0]
+    elif loss == 'FN':
+        return emp_errs_count(samples, loss = 'FN')/samples.shape[0]
+    elif loss == 'FP_conditional':
+        return emp_errs_count(samples, loss = 'FP')/(samples.y_true == 0).sum()
+    elif loss == 'FN_conditional':
+        return emp_errs_count(samples, loss = 'FN')/samples.y_true.sum()
     else:
-        raise ValueError("loss must be either 'standard', 'typeI' or 'typeII'")
+        raise ValueError("loss must be either 'standard', 'FP' or 'FN'")
 
 
 
