@@ -135,9 +135,9 @@ def emp_risk(samples, loss = 'standard'):
         return emp_errs_count(samples, loss = 'FP')/samples.shape[0]
     elif loss == 'FN':
         return emp_errs_count(samples, loss = 'FN')/samples.shape[0]
-    elif loss == 'FP_conditional':
+    elif loss == 'FP_conditional': # unused for the time being, theoretical frame not ready
         return emp_errs_count(samples, loss = 'FP')/(samples.y_true == 0).sum()
-    elif loss == 'FN_conditional':
+    elif loss == 'FN_conditional': # same
         return emp_errs_count(samples, loss = 'FN')/samples.y_true.sum()
     else:
         raise ValueError("loss must be either 'standard', 'FP' or 'FN'")
