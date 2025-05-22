@@ -114,40 +114,59 @@ def B_star(delta, e, m, eps=1e-6, b1=0, b2=1):
 
 
 
-def emp_errs_count(samples, loss = 'standard'):
-    if loss == 'standard':
+def emp_errs_count(samples, metric = 'standard'):
+    if metric == 'standard':
         return (samples.y_pred != samples.y_true).sum()
-    elif loss == 'FP':
+    elif (metric == 'FP') or (metric == 'FPR'):
         return ((samples.y_pred == 1) & (samples.y_true == 0)).sum()
-    elif loss == 'FN':
+    elif (metric == 'FN') or (metric == 'FNR'):
         return ((samples.y_pred == 0) & (samples.y_true == 1)).sum()
     else:
-        raise ValueError("loss must be either 'standard', 'FP' or 'FN'")
+        raise ValueError("metric must be either 'standard', 'FP' or 'FN'")
     
 
 
-def emp_risk(samples, loss = 'standard'):
+def emp_risk(samples, metric = 'standard'):
     if samples.shape[0] == 0:
-        raise ValueError
-    if loss == 'standard':
+        raise ValueError('no sample in dataset')
+    if metric == 'standard':
         return emp_errs_count(samples)/samples.shape[0]
-    elif loss == 'FP':
-        return emp_errs_count(samples, loss = 'FP')/samples.shape[0]
-    elif loss == 'FN':
-        return emp_errs_count(samples, loss = 'FN')/samples.shape[0]
-    elif loss == 'FP_conditional': # unused for the time being, theoretical frame not ready
-        return emp_errs_count(samples, loss = 'FP')/(samples.y_true == 0).sum()
-    elif loss == 'FN_conditional': # same
-        return emp_errs_count(samples, loss = 'FN')/samples.y_true.sum()
+    elif metric == 'FP':
+        return emp_errs_count(samples, metric = 'FP')/samples.shape[0]
+    elif metric == 'FN':
+        return emp_errs_count(samples, metric = 'FN')/samples.shape[0]
+    elif metric == 'FPR': 
+        return emp_errs_count(samples, metric = 'FP')/(samples.y_true == 0).sum()
+    elif metric == 'FPR': 
+        return emp_errs_count(samples, metric = 'FN')/samples.y_true.sum()
     else:
-        raise ValueError("loss must be either 'standard', 'FP' or 'FN'")
+        raise ValueError("metric must be either 'standard', 'FP' or 'FN'")
 
 
 
-def SGR(delta, r_star, Sm, k, loss = 'standard', tolerance = 1e-2, union = True):
+def upper_bound_denominator(metric, selected_samples, delta):
+    """
+    denominator of upper bound for rates metrics (FPR, FNR, VPP)
+    """
+    if metric == 'FPR':
+        d1 = selected_samples.y_true.sum()/selected_samples.shape[0]
+        d2 = np.sqrt(-np.log(delta/2)/(2*selected_samples.shape[0]))
+        return(1-d1-d2)
+    elif metric == 'FNR':
+        # a écrire
+        return
+    elif metric == 'PPV':
+        # a écrere
+        return
+    else:
+        raise ValueError('metric should be FPR or FNR or PPV')
+
+
+
+def SGR(delta, r_star, Sm, k, metric='standard', 
+        tolerance=2e-3, union=True):
     """
     Selection with Guaranteed Risk (SGR) algorithm
-    from Geifman el Yaniv 2017
     """
     
     m = Sm.shape[0]
@@ -160,22 +179,26 @@ def SGR(delta, r_star, Sm, k, loss = 'standard', tolerance = 1e-2, union = True)
         z = int((zmin+zmax)/2)
         theta = Sm.SR[z]
         selected_samples = Sm.loc[Sm.SR > theta]
-        selected_errs_count = emp_errs_count(selected_samples, loss = loss)
+        selected_errs_count = emp_errs_count(selected_samples, metric = metric)
 
-        b_star = B_star(desired_prob, 
+        bound = B_star(desired_prob, 
                         selected_errs_count,
                         selected_samples.shape[0])
-        if b_star < r_star:
+        
+        if metric in ['FPR','FNR','PPV']:
+            bound = bound/upper_bound_denominator(metric, selected_samples,delta)
+            
+        if bound < r_star:
             zmax = z
         else:
             zmin = z
 
-    if (b_star < r_star) or abs(b_star - r_star) < tolerance: 
+    if abs(bound - r_star) < tolerance: 
         return {'theta_star' : theta,
-                'b_star' : b_star,
+                'bound' : bound,
                 'delta' : delta,
                 'coverage' : selected_samples.shape[0]/m,
-                'risk' : emp_risk(selected_samples, loss = loss)}
+                'risk' : emp_risk(selected_samples, metric = metric)}
     else:
         return {}
 
@@ -183,7 +206,7 @@ def SGR(delta, r_star, Sm, k, loss = 'standard', tolerance = 1e-2, union = True)
 
 def SGR_at_risks(train_set,test_set, k, delta = 0.001, 
                  desired_risks = [i/100 for i in range(1,15)], 
-                 loss = 'standard', union = True):
+                 metric = 'standard', union = True):
     """
     Compute SGR risk bound and actual risks on training and test sets, for different target risks (r_star)
     wp of exceeding r_star < delta
@@ -191,16 +214,16 @@ def SGR_at_risks(train_set,test_set, k, delta = 0.001,
     results = []
     for r_star in desired_risks:
 
-        sgr_dico = SGR(delta, r_star, train_set, k, loss = loss, union = union)
+        sgr_dico = SGR(delta, r_star, train_set, k, metric = metric, union = union)
         if sgr_dico != {}:
             theta_star = sgr_dico['theta_star']
             covered_test_set = test_set.loc[test_set.SR > theta_star]
             if covered_test_set.shape[0] > 0:
-                test_risk = emp_risk(covered_test_set, loss = loss)
+                test_risk = emp_risk(covered_test_set, metric = metric)
             else:
                 test_risk = np.nan
             results.append({'desired_risk' : r_star,
-                            'risk_bound' : sgr_dico['b_star'],
+                            'risk_bound' : sgr_dico['bound'],
                             'train_risk' : sgr_dico['risk'],
                             'train_coverage' : sgr_dico['coverage'],
                             'test_risk' : test_risk,
@@ -380,21 +403,3 @@ def integers_log_spacing(start, end, num_points = 40):
     fewer_ints = all_ints[log_indices]
 
     return fewer_ints.tolist()
-
-
-
-def outputs_for_algo2_upper_bound(sgr_ds, theta, loss, delta = 0.001):
-    """
-    compute upper bound b* and terms of the denominator for computation of upper bound for FPR(f,g_i)
-    """
-    selected_samples = sgr_ds.loc[sgr_ds.SR > theta]
-    selected_errs_count = emp_errs_count(selected_samples, loss = loss)
-    b_star = B_star(delta, 
-                    selected_errs_count,
-                    selected_samples.shape[0])
-    d1 = selected_samples.y_true.sum()/selected_samples.shape[0]
-    d2 = np.sqrt(-np.log(delta/2)/(2*selected_samples.shape[0]))
-    upper_bound = b_star/(1-d1-d2)
-    return {'upper_bound': upper_bound,'b_star' : b_star,
-             'D' : 1-d1-d2, 'd1': d1, 'd2': d2}
-
