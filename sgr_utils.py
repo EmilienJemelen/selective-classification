@@ -380,3 +380,21 @@ def integers_log_spacing(start, end, num_points = 40):
     fewer_ints = all_ints[log_indices]
 
     return fewer_ints.tolist()
+
+
+
+def outputs_for_algo2_upper_bound(sgr_ds, theta, loss, delta = 0.001):
+    """
+    compute upper bound b* and terms of the denominator for computation of upper bound for FPR(f,g_i)
+    """
+    selected_samples = sgr_ds.loc[sgr_ds.SR > theta]
+    selected_errs_count = emp_errs_count(selected_samples, loss = loss)
+    b_star = B_star(delta, 
+                    selected_errs_count,
+                    selected_samples.shape[0])
+    d1 = selected_samples.y_true.sum()/selected_samples.shape[0]
+    d2 = np.sqrt(-np.log(delta/2)/(2*selected_samples.shape[0]))
+    upper_bound = b_star/(1-d1-d2)
+    return {'upper_bound': upper_bound,'b_star' : b_star,
+             'D' : 1-d1-d2, 'd1': d1, 'd2': d2}
+
