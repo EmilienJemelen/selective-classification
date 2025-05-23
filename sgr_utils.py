@@ -178,7 +178,7 @@ def SGR(delta, r_star, Sm, k, metric='standard',
         
         z = int((zmin+zmax)/2)
         theta = Sm.SR[z]
-        selected_samples = Sm.loc[Sm.SR > theta]
+        selected_samples = Sm.loc[Sm.SR >= theta]
         selected_errs_count = emp_errs_count(selected_samples, metric = metric)
 
         bound = B_star(desired_prob, 
