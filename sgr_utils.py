@@ -174,7 +174,7 @@ def SGR(delta, r_star, Sm, k, metric='standard',
     zmax = m
     desired_prob = delta/k if union else delta
 
-    for i in range(k):
+    for i in range(k+1):
         
         z = int((zmin+zmax)/2)
         theta = Sm.SR[z]
@@ -184,7 +184,7 @@ def SGR(delta, r_star, Sm, k, metric='standard',
         bound = B_star(desired_prob, 
                         selected_errs_count,
                         selected_samples.shape[0])
-        
+         
         if metric in ['FPR','FNR','PPV']:
             bound = bound/upper_bound_denominator(metric, selected_samples,delta)
             
@@ -193,14 +193,18 @@ def SGR(delta, r_star, Sm, k, metric='standard',
         else:
             zmin = z
 
-    if abs(bound - r_star) < tolerance: 
-        return {'theta_star' : theta,
+        if ((selected_errs_count == 0) and (bound > r_star)):
+            # algo can't get bound any lower if already 0 mistakes => r* can't be guaranteed
+            return {}
+
+        if abs(bound - r_star) < tolerance:
+            return {'theta_star' : theta,
                 'bound' : bound,
                 'delta' : delta,
                 'coverage' : selected_samples.shape[0]/m,
                 'risk' : emp_risk(selected_samples, metric = metric)}
-    else:
-        return {}
+        
+    return {}
 
 
 
