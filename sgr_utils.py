@@ -164,7 +164,7 @@ def upper_bound_denominator(metric, selected_samples, delta):
 
 
 def SGR(delta, r_star, Sm, k, metric='standard', 
-        tolerance=2e-3, union=True):
+        tolerance=5e-3, union=True):
     """
     Selection with Guaranteed Risk (SGR) algorithm
     """
@@ -187,24 +187,22 @@ def SGR(delta, r_star, Sm, k, metric='standard',
          
         if metric in ['FPR','FNR','PPV']:
             bound = bound/upper_bound_denominator(metric, selected_samples,delta)
-            
+
+
+        if ((selected_errs_count == 0) and (bound > r_star + tolerance)):
+            # algo can't get bound any lower if already 0 mistakes => r* can't be guaranteed
+            return {}    
+        
         if bound < r_star:
             zmax = z
         else:
             zmin = z
-
-        if ((selected_errs_count == 0) and (bound > r_star)):
-            # algo can't get bound any lower if already 0 mistakes => r* can't be guaranteed
-            return {}
-
-        if abs(bound - r_star) < tolerance:
-            return {'theta_star' : theta,
+            
+    return {'theta_star' : theta,
                 'bound' : bound,
                 'delta' : delta,
                 'coverage' : selected_samples.shape[0]/m,
                 'risk' : emp_risk(selected_samples, metric = metric)}
-        
-    return {}
 
 
 
