@@ -206,6 +206,50 @@ def SGR(delta, r_star, Sm, k, metric='standard',
 
 
 
+def SGR_greedy(delta, r_star, Sm, metric='standard', 
+        tolerance=1e-2, union=True):
+    """
+    Selection with Guaranteed Risk (SGR) greedy search algorithm
+    """
+    
+    m = Sm.shape[0]
+    desired_prob = delta/k if union else delta
+    
+    best_bound = np.inf
+    best_theta = 0
+    best_coverage = 0
+    best_risk = 0
+
+    for i in range(m):
+        
+        theta = Sm.SR[i]
+        selected_samples = Sm.loc[Sm.SR >= theta]
+        selected_errs_count = emp_errs_count(selected_samples, metric = metric)
+
+        bound = B_star(desired_prob, 
+                        selected_errs_count,
+                        selected_samples.shape[0])
+         
+        if metric in ['FPR','FNR','PPV']:
+            bound = bound/upper_bound_denominator(metric, selected_samples,delta)
+        
+        if abs(bound - r_star) < abs(best_bound - r_star):
+            best_bound = bound
+            best_theta = theta
+            best_coverage = selected_samples.shape[0]/m
+            best_risk = emp_risk(selected_samples, metric = metric)
+            
+    if abs(best_bound - r_star) < tolerance:
+        return {'theta_star' : best_theta,
+                    'bound' : best_bound,
+                    'delta' : delta,
+                    'coverage' : best_coverage,
+                    'risk' : best_risk}
+    else:
+        return {}
+
+
+
 def SGR_at_risks(train_set,test_set, k, delta = 0.001, 
                  desired_risks = [i/100 for i in range(1,15)], 
                  metric = 'standard', union = True):
