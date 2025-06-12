@@ -75,8 +75,8 @@ def metric_plots_with_imbalance(all_propor_dfs, ylabel: str,
     proxy_blue = plt.Line2D([0], [0], color=cmap_blue(0.8), label='Guaranteed', linestyle='--')
     proxy_orange = plt.Line2D([0], [0], color=cmap_orange(0.8), label='On test set')
 
-    for proportion_1 in range(1, 51):
-        norm_value = proportion_1 / 50
+    for proportion_1 in np.linspace(1,50,15):
+        norm_value = (10+proportion_1) / 65
         color_blue = cmap_blue(norm_value)
         color_orange = cmap_orange(norm_value)
 

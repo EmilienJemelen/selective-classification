@@ -126,7 +126,7 @@ def SGR_dicho(delta, r_star, Sm, k, metric, tolerance=1e-2, union=False):
                            'PPV': 'FP', 'SE': 'FN',
                            'SP': 'FP'}
 
-    for i in range(k+1):
+    for i in range(k):
         
         z = int((zmin+zmax)/2)
         theta = Sm.SR[z]
@@ -147,22 +147,64 @@ def SGR_dicho(delta, r_star, Sm, k, metric, tolerance=1e-2, union=False):
         else:
             zmin = z
 
-    if B > 0 and B < 1: 
-        # FNR bound can be negative (and so SE bound > 1) if proportion of 1s in selected samples close to zero:
-        # in this case 
-        return {'theta_star' : theta,
-                'bound' : B,
-                'delta' : delta,
-                'coverage' : selected_samples.shape[0]/m,
-                'emp_metric' : emp_metric(selected_samples, metric = metric)}
+    return {'theta_star' : theta,
+            'bound' : B,
+            'delta' : delta,
+            'coverage' : selected_samples.shape[0]/m,
+            'emp_metric' : emp_metric(selected_samples, metric = metric)}
+
+
+
+def satisfaction(bound, r_star, metric, epsilon=5e-3):
+    if metric in ['standard', 'FP', 'FN', 'FPR', 'FNR']:
+        return True if (bound <= r_star + epsilon) and (bound > 0) else False
     else:
-        return {}
+        return True if (bound >= r_star - epsilon) and (bound < 1) else False
+
+        
+
+def SGR_greedy_search(delta, r_star, Sm, metric, epsilon=5e-3, steps=100):
+    """
+    Greedy search for LOWEST theta with bound close enough (epsilon) to r*
+    """
+    metric_loss_mapping = {'standard': 'standard',
+                           'FP': 'FP', 'FN': 'FN',
+                           'FPR': 'FP', 'FNR': 'FN',
+                           'PPV': 'FP', 'SE': 'FN',
+                           'SP': 'FP'} 
+    Sm = Sm.sort_values('SR', ascending=True)
+    kappas = np.array(Sm.SR)
+    
+    for theta in np.linspace(kappas[0], kappas[-1], steps):
+
+        selected_samples = Sm.loc[Sm.SR >= theta]
+        selected_errs_count = emp_errs_count(selected_samples, loss = metric_loss_mapping[metric])
+
+        b = B_star(delta, 
+                   selected_errs_count,
+                   selected_samples.shape[0])        
+        B = bound(b, selected_samples, delta, metric)
+        
+        # terminal condition
+        if terminal_condition(selected_errs_count, B, r_star, epsilon, metric):
+        # algo can't get bound any closer if already 0 mistakes => r* can't be guaranteed
+            return {}
+        
+        if satisfaction(B, r_star, metric, epsilon=epsilon):
+            return {'theta_star' : theta,
+                    'bound' : B,
+                    'delta' : delta,
+                    'coverage' : selected_samples.shape[0]/Sm.shape[0],
+                    'emp_metric' : emp_metric(selected_samples, metric = metric)}
+        
+    return {} # if we never found satisfactory B..
 
 
 
-def SGR_dicho_at_risks(train_set,test_set, k, delta = 0.001, 
-                       metric_targets = [i/100 for i in range(1,15)], 
-                       metric = 'standard', union=False):
+def SGR_at_targets(train_set,test_set, k, delta = 0.001, 
+                   metric_targets = [i/100 for i in range(1,15)], 
+                   metric = 'standard', union=False, 
+                   mode='greedy', steps=100):
     """
     Compute SGR metric bound and empirical metric on training and test sets, for different metric targets (r_star)
     wp of exceeding r_star < delta
@@ -170,7 +212,13 @@ def SGR_dicho_at_risks(train_set,test_set, k, delta = 0.001,
     results = []
     for r_star in metric_targets:
 
-        sgr_dico = SGR_dicho(delta, r_star, train_set, k, metric = metric, union = union)
+        if mode == 'dicho':
+            sgr_dico = SGR_dicho(delta, r_star, train_set, k, metric = metric, union = union)
+        elif mode == 'greedy':
+            sgr_dico = SGR_greedy_search(delta, r_star, train_set, metric, epsilon=1e-3, steps=steps)
+        else:
+            raise ValueError('mode should be either "greedy" or "dicho"')
+        
         if sgr_dico != {}:
             theta_star = sgr_dico['theta_star']
             covered_test_set = test_set.loc[test_set.SR > theta_star]
@@ -190,60 +238,47 @@ def SGR_dicho_at_risks(train_set,test_set, k, delta = 0.001,
 
 
 
-###
-### UNFINISHED BUSINESS BELOW
-###
-
-
-
-
-
-def SGR_greedy(delta, r_star, k, Sm, metric='standard', tolerance=1e-2, union=False):
-    """
-    Selection with Guaranteed Metric (SGM) greedy search algorithm
-    """
-    
-    m = Sm.shape[0]
-    desired_prob = delta/k if union else delta
-    
-    best_bound = np.inf
-    best_theta = 0
-    best_coverage = 0
-    emp_metric = 0
+def bound_evo_w_theta(metric, Sm, delta, steps=100):
 
     metric_loss_mapping = {'standard': 'standard',
                            'FP': 'FP', 'FN': 'FN',
                            'FPR': 'FP', 'FNR': 'FN',
                            'PPV': 'FP', 'SE': 'FN',
                            'SP': 'FP'}
+    Sm = Sm.sort_values('SR', ascending=True)
+    kappas = np.array(Sm.SR)
+    bounds, thetas = [], []
 
-    for theta in Sm.SR: # SR col must be ranked ascendingly
-        
+    for theta in np.linspace(kappas[0], kappas[-1], steps):
+
         selected_samples = Sm.loc[Sm.SR >= theta]
         selected_errs_count = emp_errs_count(selected_samples, loss = metric_loss_mapping[metric])
 
-        bound = B_star(desired_prob, 
-                       selected_errs_count,
-                       selected_samples.shape[0])
-         
-        if metric in ['FPR','FNR']:
-            bound = bound/upper_bound_denominator(metric, selected_samples,delta)
-        elif metric in ['PPV', 'SE', 'SP']:
-            bound = 1 - bound/upper_bound_denominator(metric, selected_samples,delta)
-        else: # metric is standard 0/1 
-            pass 
+        b = B_star(delta, 
+                   selected_errs_count,
+                   selected_samples.shape[0])        
+        B = bound(b, selected_samples, delta, metric)
+        if selected_errs_count == 0:
+            return thetas, bounds
+        thetas.append(theta)
+        bounds.append(B)
 
-        if abs(bound - r_star) < abs(best_bound - r_star):
-            best_bound = bound
-            best_theta = theta
-            best_coverage = selected_samples.shape[0]/m
-            emp_metric = emp_metric(selected_samples, metric = metric)
-            
-    if abs(best_bound - r_star) < tolerance:
-        return {'theta_star' : best_theta,
-                'bound' : best_bound,
-                'delta' : delta,
-                'coverage' : best_coverage,
-                'emp_metric' : emp_metric}
-    else:
-        return {}
+    return thetas, bounds
+
+
+
+def pos_propor_w_theta(Sm, steps=100):
+
+    Sm = Sm.sort_values('SR', ascending=True)
+    kappas = np.array(Sm.SR)
+    pos_propor, thetas = [], np.linspace(kappas[0], kappas[-1], steps)
+
+    for theta in thetas:
+
+        selected_samples = Sm.loc[Sm.SR >= theta]
+        pos_propor.append(selected_samples.y_true.sum()/selected_samples.shape[0])
+
+    return thetas, pos_propor
+
+
+
