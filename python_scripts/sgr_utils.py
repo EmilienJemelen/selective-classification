@@ -23,8 +23,8 @@ from collections import defaultdict
 from pathlib import Path
 from collections import Counter
 
-from scripts.math_utils import *
-from scripts.preprocessing import *
+from python_scripts.math_utils import *
+from python_scripts.preprocessing import *
 
 
 
@@ -186,8 +186,7 @@ def SGR_greedy_search(delta, r_star, Sm, metric, epsilon=5e-3, steps=100):
         B = bound(b, selected_samples, delta, metric)
         
         # terminal condition
-        if terminal_condition(selected_errs_count, B, r_star, epsilon, metric):
-        # algo can't get bound any closer if already 0 mistakes => r* can't be guaranteed
+        if selected_errs_count == 0:
             return {}
         
         if satisfaction(B, r_star, metric, epsilon=epsilon):
@@ -235,6 +234,43 @@ def SGR_at_targets(train_set,test_set, k, delta = 0.001,
                             'test_coverage' : covered_test_set.shape[0]/test_set.shape[0]})
     
     return pd.DataFrame(results)
+
+
+
+def SGR_at_targets_on_imbalanced_sets(proportions_of_1, metric_targets, sgr_df,
+                                      greedy_search_steps_num, delta, metric='standard'):
+    """
+    Run SGR on datasets with varying class-1 proportions.
+
+    Creates imbalanced datasets from `sgr_df`, runs SGR on each, and collects results.
+
+    Args:
+        proportions_of_1 (list of float): Target class-1 proportions.
+        metric_targets (dict): Target metric values.
+        sgr_df (pd.DataFrame): Input balanced dataset with 'y_true' and 'SR' columns.
+        greedy_search_steps_num (int): Number of greedy search steps.
+        delta (float): control proba
+        metric: chosen metric
+
+    Returns:
+        pd.DataFrame: Results with class-1 proportions.
+    """
+    all_propor_dfs = pd.DataFrame()
+    imbalanced_datasets = generate_imbalanced_datasets(sgr_df, proportions_of_1, seed=42)
+
+    for proportion_1, imbalanced_set in zip(proportions_of_1, imbalanced_datasets):
+
+        train_set_ = imbalanced_set.iloc[:2*int(imbalanced_set.shape[0]/3)]
+        train_set_ = train_set_.sort_values('SR', ascending=True).reset_index(drop=True).copy()
+        test_set_ = imbalanced_set.iloc[2*int(imbalanced_set.shape[0]/3):]
+
+        results = SGR_at_targets(train_set_, test_set_, k=int(np.log2(train_set_.shape[0])),
+                                delta=delta, metric_targets=metric_targets, metric=metric,
+                                mode='greedy', steps=greedy_search_steps_num)
+        results['proportion_1'] = proportion_1
+        all_propor_dfs = pd.concat([all_propor_dfs, results]).reset_index(drop=True)
+
+    return all_propor_dfs
 
 
 

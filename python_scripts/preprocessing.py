@@ -61,34 +61,40 @@ def prepare_sgr_dico(dataloader, model, device, T):
 
 
 
-def sample_with_proportion(df, label_col, proportion_1, sample_size):
+def generate_imbalanced_datasets(balanced_dataset, proportions, label_col='y_true', seed=None):
     """
-    Sample a balanced dataset from a DataFrame according to a specified class proportion.
+    Create imbalanced datasets by downsampling class-1 samples while keeping all class-0 samples.
+
+    Assumes the input dataset is initially class-balanced and all values in `v` are <= 0.5.
 
     Args:
-        df (pd.DataFrame): The input DataFrame containing labeled data.
-        label_col (str): Name of the column containing binary class labels (0 or 1).
-        proportion_1 (float): Desired proportion of class 1 samples in the final sample (between 0 and 1).
-        sample_size (int): Total number of samples to draw.
+        train_set (pd.DataFrame): Input DataFrame with binary labels.
+        proportions (list of float): Target proportions of class-1 samples in the output datasets.
+        label_col (str): Name of the label column. Default is 'y_true'.
+        seed (int, optional): Random seed for reproducibility.
 
     Returns:
-        pd.DataFrame: A new DataFrame containing the sampled data, shuffled and balanced according to the given proportion.
+        list of pd.DataFrame: List of datasets with adjusted class-1 proportions.
     """
-    # Separate classes
-    ones = df[df[label_col] == 1]
-    zeros = df[df[label_col] == 0]
+    np.random.seed(seed)
+    
+    # Split the dataset
+    df_pos = balanced_dataset[balanced_dataset[label_col] == 1]
+    df_neg = balanced_dataset[balanced_dataset[label_col] == 0]
+    
+    N0 = len(df_neg)
+    datasets = []
 
-    # Calculate how many 1s and 0s you need
-    n_ones = int(sample_size * proportion_1)
-    n_zeros = sample_size - n_ones
+    for p in proportions:
+        N1 = int(p * balanced_dataset.shape[0])
+        N1 = min(N1, len(df_pos))  # Just in case
 
-    # Sample from each class
-    sampled_ones = ones.sample(n=n_ones, random_state=42)
-    sampled_zeros = zeros.sample(n=n_zeros, random_state=42)
+        df_pos_sampled = df_pos.sample(n=N1, random_state=seed, replace=False)
+        df_combined = pd.concat([df_neg, df_pos_sampled], axis=0).sample(frac=1, random_state=seed).reset_index(drop=True)
 
-    # Concatenate and shuffle
-    sampled_df = pd.concat([sampled_ones, sampled_zeros]).sample(frac=1, random_state=42).reset_index(drop=True)
-    return sampled_df
+        datasets.append(df_combined)
+
+    return datasets
 
 
 

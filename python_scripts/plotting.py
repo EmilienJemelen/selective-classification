@@ -54,9 +54,9 @@ def metric_plots(results, ylabel: str,
 
 
 
-def metric_plots_with_imbalance(all_propor_dfs, ylabel: str, 
+def metric_plots_with_imbalance(all_propor_dfs, proportions,
+                                ylabel: str, ylim: list = [0, 1],
                                 xlim1: list = [0, 1], xlim2: list = [0, 1],
-                                ylim: list = [0, 1],
                                 title : str= None):
     
     # Set up colormaps
@@ -75,12 +75,12 @@ def metric_plots_with_imbalance(all_propor_dfs, ylabel: str,
     proxy_blue = plt.Line2D([0], [0], color=cmap_blue(0.8), label='Guaranteed', linestyle='--')
     proxy_orange = plt.Line2D([0], [0], color=cmap_orange(0.8), label='On test set')
 
-    for proportion_1 in np.linspace(1,50,15):
-        norm_value = (10+proportion_1) / 65
+    for proportion_1 in proportions:
+        norm_value = (10+proportion_1*100) / 60
         color_blue = cmap_blue(norm_value)
         color_orange = cmap_orange(norm_value)
 
-        results = all_propor_dfs.loc[all_propor_dfs.proportion_1 == proportion_1 / 100]
+        results = all_propor_dfs.loc[all_propor_dfs.proportion_1 == proportion_1]
 
         # Coverage subplot
         axs[0].plot(results.test_coverage, results.metric_bound, color=color_blue, linestyle='--')
