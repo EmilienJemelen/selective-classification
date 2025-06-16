@@ -146,20 +146,18 @@ def integers_exp_spacing(start, end, num_points=40):
 
 
 
-def simulate_SGR_dataset(n, accuracy=0.8):
+def simulate_SGR_dataset(n, high_conf_propor=0.7, seed=42):
     """
     Simulate a dataset with binary predictions (`y_true`, `y_pred`) and confidence scores (`SR`).
-    
     The probability of a mistake (`y_true != y_pred`) decreases as SR increases.
 
     Parameters:
     -----------
     n : int
         Number of samples to generate.
-        
-    theta : float, optional (default=0.9)
-        Threshold for controlling confidence levels. Higher SR means fewer mistakes.
-
+    high_conf_propor : proportion of predictions with high confidence distribution
+    seed : for reproducibility
+    
     Returns:
     --------
     pandas.DataFrame
@@ -167,34 +165,27 @@ def simulate_SGR_dataset(n, accuracy=0.8):
         - 'y_true': True binary labels.
         - 'y_pred': Predicted labels (0 or 1).
         - 'SR': Confidence score (Beta-distributed).
-
-    Notes:
-    ------
-    - Correct predictions (`y_true == y_pred`) have SR ~ Beta(9, 1) (mean ~0.9).
-    - Incorrect predictions (`y_true != y_pred`) have SR ~ Beta(3, 2) (mean ~0.6).
     """
+    if seed is not None:
+        np.random.seed(seed)
+
     # y_true: binary, balanced classes
     y_true = np.random.choice([0, 1], size=n)
-
-    # Generate SR using Beta distribution: separate for correct/incorrect predictions
+    # Generate two confidence ditributions using Beta distribution
     SR = np.empty(n)
-    # For correct predictions (accuracy% of the time)
-    match = np.random.rand(n) < accuracy
-    SR[match] = beta.rvs(9, 1, size=match.sum())  # High confidence mean ~0.9
-    # For incorrect predictions (1-accuracy% of the time)
-    SR[~match] = beta.rvs(3, 2, size=(~match).sum())  # Lower confidence mean ~0.6
+    match = np.random.rand(n) < high_conf_propor # draw high_conf_propor % of samples with high confidence predictions
+    SR[match] = beta.rvs(9, 1, size=match.sum())  # High confidence beta distribution, mean=0.9, variance=8.2e-3
+    SR[~match] = beta.rvs(3, 2, size=(~match).sum())  # Lower confidence distribution, mean=0.6, variance=0.02
 
-    # Control mistakes based on SR
-    # Mistake probability = 1 - SR; higher SR => fewer mistakes
-    mistake_prob = 1 - SR
+    # accuracy = 0.7*0.9+0.3*0.6=0.81 in this setting
 
     # Create y_pred based on mistake probabilities
     y_pred = np.zeros(n)
     for i in range(n):
-        if np.random.rand() > mistake_prob[i]:
-            y_pred[i] = 1 - y_true[i]  # incorrect prediction: flip the prediction 
+        if np.random.rand() < SR[i]: # very likely if SR confidence is high
+            y_pred[i] = y_true[i]  # correct prediction
         else:
-            y_pred[i] = y_true[i]  # Correct prediction
+            y_pred[i] = 1 - y_true[i]  # incorrect prediction
 
     # Create DataFrame
     df = pd.DataFrame({

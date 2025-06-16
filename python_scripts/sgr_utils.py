@@ -111,7 +111,7 @@ def decrease_theta(bound, r_star, metric):
 
 
 
-def SGR_dicho(delta, r_star, Sm, k, metric, tolerance=1e-2, union=False):
+def SGR_dicho(delta, r_star, Sm, k, metric, tolerance=1e-3, union=False):
     """
     General Selection with Guaranteed Risk (SGR) algorithm
     """
@@ -185,7 +185,7 @@ def SGR_greedy_search(delta, r_star, Sm, metric, epsilon=5e-3, steps=100):
                    selected_samples.shape[0])        
         B = bound(b, selected_samples, delta, metric)
         
-        # terminal condition
+        # terminal condition simplified to r_hat==0 because in this setting theta is increasing anyway, so b will be non decreasing at next iters
         if selected_errs_count == 0:
             return {}
         
