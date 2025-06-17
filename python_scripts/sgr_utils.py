@@ -318,3 +318,19 @@ def pos_propor_w_theta(Sm, steps=100):
 
 
 
+def runtime(sim_df, mode:str='dicho', greedy_steps:int=20):
+    """
+    study of time to run dicho search vs greedy search (with different step_num, more steps mean more acute results)
+    """
+    t0 = datetime.now()
+    if mode=='dicho':
+        res = SGR_dicho(delta=1e-3, r_star=0.05, 
+                        Sm=sim_df, k=int(np.log2(sim_df.shape[0])),
+                        metric='standard', tolerance=1e-3, union=False)
+    elif mode=='greedy':
+        res = SGR_greedy_search(delta=1e-3, r_star=0.05, Sm=sim_df, 
+                                metric='standard', steps=greedy_steps)
+    else:
+        raise ValueError('mode should either be dicho or greedy')
+    t1 = datetime.now()
+    return (t1-t0).seconds
