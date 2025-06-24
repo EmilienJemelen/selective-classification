@@ -64,11 +64,11 @@ def emp_metric(samples, metric = 'standard'):
 
 
 
-def upper_bound_denominator(metric, selected_samples, delta):
+def upper_bound_denominator(metric, selected_samples, delta, m):
     """
     denominator of upper bound for metrics FPR, FNR, VPP, SE, SP
     """
-    d2 = np.sqrt(-np.log(delta/2)/(2*selected_samples.shape[0]))
+    d2 = np.sqrt(-m*np.log(delta/2))/selected_samples.shape[0]
     if (metric == 'PPV'):
         d1 = selected_samples.y_pred.sum()/selected_samples.shape[0]
     else:
@@ -81,13 +81,13 @@ def upper_bound_denominator(metric, selected_samples, delta):
 
 
 
-def bound(b, selected_samples, delta, metric):
+def bound(b, selected_samples, delta, metric, m):
     if metric in ['standard', 'FP', 'FN']:
         return b
     elif metric in ['FPR', 'FNR']:
-        return b/upper_bound_denominator(metric, selected_samples, delta)
+        return b/abs(upper_bound_denominator(metric, selected_samples, delta, m))
     else: # PPV, SE, SP
-        return 1 - b/upper_bound_denominator(metric, selected_samples, delta)
+        return 1 - b/abs(upper_bound_denominator(metric, selected_samples, delta ,m))
 
 
 
@@ -137,7 +137,7 @@ def SGR_dicho(delta, r_star, Sm, k, metric, tolerance=1e-3, union=False):
                    selected_errs_count,
                    selected_samples.shape[0])
          
-        B = bound(b, selected_samples, delta, metric)
+        B = bound(b, selected_samples, delta, metric, m)
         
         if terminal_condition(selected_errs_count, B, r_star, tolerance, metric):
         # algo can't get bound any closer if already 0 mistakes => r* can't be guaranteed
@@ -157,9 +157,9 @@ def SGR_dicho(delta, r_star, Sm, k, metric, tolerance=1e-3, union=False):
 
 def satisfaction(bound, r_star, metric, epsilon=5e-3):
     if metric in ['standard', 'FP', 'FN', 'FPR', 'FNR']:
-        return True if (bound <= r_star + epsilon) and (bound > 0) else False
+        return True if (bound <= r_star + epsilon) else False
     else:
-        return True if (bound >= r_star - epsilon) and (bound < 1) else False
+        return True if (bound >= r_star - epsilon) else False
 
         
 
@@ -183,9 +183,10 @@ def SGR_greedy_search(delta, r_star, Sm, metric, epsilon=5e-3, steps=100):
         b = B_star(delta, 
                    selected_errs_count,
                    selected_samples.shape[0])        
-        B = bound(b, selected_samples, delta, metric)
+        B = bound(b, selected_samples, delta, metric, m=Sm.shape[0])
         
-        # terminal condition simplified to r_hat==0 because in this setting theta is increasing anyway, so b will be non decreasing at next iters
+        # terminal condition simplified to r_hat==0 because in this setting theta is increasing anyway, 
+        # so bound will be non decreasing at next iterations
         if selected_errs_count == 0:
             return {}
         
@@ -293,7 +294,7 @@ def bound_evo_w_theta(metric, Sm, delta, steps=100):
         b = B_star(delta, 
                    selected_errs_count,
                    selected_samples.shape[0])        
-        B = bound(b, selected_samples, delta, metric)
+        B = bound(b, selected_samples, delta, metric, m=Sm.shape[0])
         if selected_errs_count == 0:
             return thetas, bounds
         thetas.append(theta)
