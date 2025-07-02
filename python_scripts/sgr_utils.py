@@ -148,7 +148,7 @@ def SGR_dicho(delta, r_star, Sm, k, metric, xi=1e-3, union=False):
 
 
 
-def satisfaction(bound, r_star, metric, xi=5e-3):
+def satisfaction(bound, r_star, metric, xi=1e-3):
     if metric in ['standard', 'FP', 'FN', 'FPR', 'FNR']:
         return True if (bound <= r_star + xi) else False
     else:
