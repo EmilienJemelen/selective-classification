@@ -34,49 +34,49 @@ def sotfmax(x):
 
 
 
-def binomial_log(m, j):
-    return gammaln(m + 1) - gammaln(j + 1) - gammaln(m - j + 1)
+def binomial_log(n, j):
+    return gammaln(n + 1) - gammaln(j + 1) - gammaln(n - j + 1)
 
 
 
-def binom_sum(b,e,m):
+def binom_sum(b,e,n):
     """
     binomial sum of term b in [0,1]
-    with binomial coefs "j among m"
+    with binomial coefs "j among n"
     for j in 0,1,...,e
-    it is the proba of doing at most e errors among m Bernoulli iid experiences with error proba b
+    it is the proba of doing at most e errors among n Bernoulli iid experiences with error proba b
     """
-    if e < m:
+    if e < n:
         v = np.array([
             np.exp(
-                binomial_log(m, j)
+                binomial_log(n, j)
                 +j*np.log(b)
-                +(m-j)*np.log(1-b)) for j in range(e+1)])
+                +(n-j)*np.log(1-b)) for j in range(e+1)])
         return np.sum(v)
-    elif e == m:
+    elif e == n:
         return 1
     else:
         raise ValueError
     
 
 
-def B_star(delta, e, m, eps=1e-6, b1=0, b2=1):
+def B_star(delta, e, n, eps=1e-6, b1=0, b2=1):
     """
     b_star recursive computation by dichotomy search over [0,1], given probability delta
     approximate solution at eps (in terms of FUN images)
     """
-    if e==m:
-        raise ValueError
+    if (e==n) or (n==0):
+        return np.inf
     if e==0:
-        return 1-delta**(1/m)
-    
+        return 1-delta**(1/n)
+
     b = (b1+b2)/2 # middle of segment
-    if abs(binom_sum(b,e,m) - delta) < eps:
+    if abs(binom_sum(b,e,n) - delta) < eps:
         return b
-    elif binom_sum(b,e,m) <= delta - eps:
-        return B_star(delta, e, m, b1=b1, b2=b)
+    elif binom_sum(b,e,n) <= delta - eps:
+        return B_star(delta, e, n, b1=b1, b2=b)
     else:
-        return B_star(delta, e, m, b1=b, b2=b2)
+        return B_star(delta, e, n, b1=b, b2=b2)
     
 
 

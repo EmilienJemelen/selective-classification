@@ -91,11 +91,11 @@ def bound(b, selected_samples, delta, metric, m):
 
 
 
-def terminal_condition(selected_errs_count, bound, r_star, tolerance, metric):
+def terminal_condition(selected_errs_count, bound, r_star, xi, metric):
     if metric in ['standard', 'FP', 'FN', 'FPR', 'FNR']:
-        return True if ((selected_errs_count == 0) and (bound > r_star + tolerance)) else False
+        return True if ((selected_errs_count == 0) and (bound > r_star + xi)) else False
     elif metric in ['PPV', 'SE', 'SP']:
-        return True if ((selected_errs_count == 0) and (bound < r_star - tolerance)) else False
+        return True if ((selected_errs_count == 0) and (bound < r_star - xi)) else False
     else:
         raise ValueError('invalid metric')
 
@@ -111,7 +111,7 @@ def decrease_theta(bound, r_star, metric):
 
 
 
-def SGR_dicho(delta, r_star, Sm, k, metric, tolerance=1e-3, union=False):
+def SGR_dicho(delta, r_star, Sm, k, metric, xi=1e-3, union=False):
     """
     General Selection with Guaranteed Risk (SGR) algorithm
     """
@@ -120,55 +120,47 @@ def SGR_dicho(delta, r_star, Sm, k, metric, tolerance=1e-3, union=False):
     zmin = 0
     zmax = m
     desired_prob = delta/k if union else delta
-    metric_loss_mapping = {'standard': 'standard',
-                           'FP': 'FP', 'FN': 'FN',
-                           'FPR': 'FP', 'FNR': 'FN',
-                           'PPV': 'FP', 'SE': 'FN',
-                           'SP': 'FP'}
 
     for i in range(k):
         
         z = int((zmin+zmax)/2)
         theta = Sm.SR[z]
         selected_samples = Sm.loc[Sm.SR >= theta]
-        selected_errs_count = emp_errs_count(selected_samples, loss = metric_loss_mapping[metric])
+        selected_errs_count = emp_errs_count(selected_samples, loss = metric)
 
         b = B_star(desired_prob, 
                    selected_errs_count,
                    selected_samples.shape[0])
-         
-        B = bound(b, selected_samples, delta, metric, m)
-        
-        if terminal_condition(selected_errs_count, B, r_star, tolerance, metric):
-        # algo can't get bound any closer if already 0 mistakes => r* can't be guaranteed
-            return {}    
-        if decrease_theta(B, r_star, metric):
+
+        if (selected_samples.shape[0]==0) or ((selected_errs_count==0) and (b > r_star + xi)): #terminal condition
+            return {}
+
+        if b < r_star:
             zmax = z
         else:
             zmin = z
 
     return {'theta_star' : theta,
-            'bound' : B,
+            'bound' : b,
             'delta' : delta,
             'coverage' : selected_samples.shape[0]/m,
             'emp_metric' : emp_metric(selected_samples, metric = metric)}
 
 
 
-def satisfaction(bound, r_star, metric, epsilon=5e-3):
+def satisfaction(bound, r_star, metric, xi=5e-3):
     if metric in ['standard', 'FP', 'FN', 'FPR', 'FNR']:
-        return True if (bound <= r_star + epsilon) else False
+        return True if (bound <= r_star + xi) else False
     else:
-        return True if (bound >= r_star - epsilon) else False
+        return True if (bound >= r_star - xi) else False
 
         
 
-def SGR_greedy_search(delta, r_star, Sm, metric, epsilon=5e-3, steps=100):
+def SGR_greedy_search(delta, r_star, Sm, metric, xi=1e-3, steps=100):
     """
-    Greedy search for LOWEST theta with bound close enough (epsilon) to r*
+    Greedy search for LOWEST theta with bound close enough (xi) to r*
     """
     metric_loss_mapping = {'standard': 'standard',
-                           'FP': 'FP', 'FN': 'FN',
                            'FPR': 'FP', 'FNR': 'FN',
                            'PPV': 'FP', 'SE': 'FN',
                            'SP': 'FP'} 
@@ -177,20 +169,24 @@ def SGR_greedy_search(delta, r_star, Sm, metric, epsilon=5e-3, steps=100):
     
     for theta in np.linspace(kappas[0], kappas[-1], steps):
 
+        try:
+            if selected_samples.shape[0] == 0:
+                return {}
+        except:
+            pass
+
         selected_samples = Sm.loc[Sm.SR >= theta]
         selected_errs_count = emp_errs_count(selected_samples, loss = metric_loss_mapping[metric])
 
         b = B_star(delta, 
                    selected_errs_count,
-                   selected_samples.shape[0])        
+                   selected_samples.shape[0])    
+        if b==np.inf:
+            continue
+            
         B = bound(b, selected_samples, delta, metric, m=Sm.shape[0])
         
-        # terminal condition simplified to r_hat==0 because in this setting theta is increasing anyway, 
-        # so bound will be non decreasing at next iterations
-        if selected_errs_count == 0:
-            return {}
-        
-        if satisfaction(B, r_star, metric, epsilon=epsilon):
+        if satisfaction(B, r_star, metric, xi=xi):
             return {'theta_star' : theta,
                     'bound' : B,
                     'delta' : delta,
@@ -215,7 +211,7 @@ def SGR_at_targets(train_set,test_set, k, delta = 0.001,
         if mode == 'dicho':
             sgr_dico = SGR_dicho(delta, r_star, train_set, k, metric = metric, union = union)
         elif mode == 'greedy':
-            sgr_dico = SGR_greedy_search(delta, r_star, train_set, metric, epsilon=1e-3, steps=steps)
+            sgr_dico = SGR_greedy_search(delta, r_star, train_set, metric, xi=1e-3, steps=steps)
         else:
             raise ValueError('mode should be either "greedy" or "dicho"')
         
@@ -238,8 +234,9 @@ def SGR_at_targets(train_set,test_set, k, delta = 0.001,
 
 
 
-def SGR_at_targets_on_imbalanced_sets(proportions_of_1, metric_targets, sgr_df,
-                                      greedy_search_steps_num, delta, metric='standard'):
+def SGR_at_targets_on_imbalanced_sets(proportions_of_1, metric_targets, 
+                                      sgr_df, delta, mode='dicho',
+                                      greedy_search_steps_num=50, metric='standard'):
     """
     Run SGR on datasets with varying class-1 proportions.
 
@@ -267,7 +264,7 @@ def SGR_at_targets_on_imbalanced_sets(proportions_of_1, metric_targets, sgr_df,
 
         results = SGR_at_targets(train_set_, test_set_, k=int(np.log2(train_set_.shape[0])),
                                 delta=delta, metric_targets=metric_targets, metric=metric,
-                                mode='greedy', steps=greedy_search_steps_num)
+                                mode=mode, steps=greedy_search_steps_num)
         results['proportion_1'] = proportion_1
         all_propor_dfs = pd.concat([all_propor_dfs, results]).reset_index(drop=True)
 
@@ -327,7 +324,7 @@ def runtime(sim_df, mode:str='dicho', greedy_steps:int=20):
     if mode=='dicho':
         res = SGR_dicho(delta=1e-3, r_star=0.05, 
                         Sm=sim_df, k=int(np.log2(sim_df.shape[0])),
-                        metric='standard', tolerance=1e-3, union=False)
+                        metric='standard', xi=1e-3, union=False)
     elif mode=='greedy':
         res = SGR_greedy_search(delta=1e-3, r_star=0.05, Sm=sim_df, 
                                 metric='standard', steps=greedy_steps)
