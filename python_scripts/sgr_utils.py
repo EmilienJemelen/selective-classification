@@ -132,7 +132,7 @@ def SGR_dicho(delta, r_star, Sm, k, metric, xi=1e-3, union=False):
                    selected_errs_count,
                    selected_samples.shape[0])
 
-        if (selected_samples.shape[0]==0) or ((selected_errs_count==0) and (b > r_star + xi)): #terminal condition
+        if (selected_samples.shape[0]==0) or ((selected_errs_count==0) and (b >= r_star)): #terminal condition
             return {}
 
         if b < r_star:
@@ -177,6 +177,12 @@ def SGR_greedy_search(delta, r_star, Sm, metric, xi=1e-3, steps=100):
 
         selected_samples = Sm.loc[Sm.SR >= theta]
         selected_errs_count = emp_errs_count(selected_samples, loss = metric_loss_mapping[metric])
+
+        if selected_errs_count == 0: 
+            # we reach excellent bound but usually with nearly 0 coverage 
+            # not always if excellent classifier f.. 
+            # but relying on an evolution of the bound purely by change of denominator (1s propor) => instability
+            return {}
 
         b = B_star(delta, 
                    selected_errs_count,
@@ -281,21 +287,23 @@ def bound_evo_w_theta(metric, Sm, delta, steps=100):
                            'SP': 'FP'}
     Sm = Sm.sort_values('SR', ascending=True)
     kappas = np.array(Sm.SR)
-    bounds, thetas = [], []
+    bounds, thetas = [], np.linspace(kappas[0], kappas[-1], steps)
 
-    for theta in np.linspace(kappas[0], kappas[-1], steps):
+    for theta in thetas:
 
         selected_samples = Sm.loc[Sm.SR >= theta]
         selected_errs_count = emp_errs_count(selected_samples, loss = metric_loss_mapping[metric])
+        if (selected_errs_count==0) or selected_samples.shape[0]==0:
+            break
 
         b = B_star(delta, 
                    selected_errs_count,
                    selected_samples.shape[0])        
         B = bound(b, selected_samples, delta, metric, m=Sm.shape[0])
-        if selected_errs_count == 0:
-            return thetas, bounds
-        thetas.append(theta)
-        bounds.append(B)
+        bounds.append(B) 
+
+    while len(bounds) < len(thetas):
+        bounds.append(np.nan)
 
     return thetas, bounds
 
