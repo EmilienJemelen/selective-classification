@@ -2,6 +2,7 @@ import torch
 import torch.nn as nn
 import numpy as np
 import matplotlib.pyplot as plt
+from matplotlib.lines import Line2D
 import pickle
 import pandas as pd
 import torchvision.transforms as transforms
