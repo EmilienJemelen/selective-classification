@@ -2,6 +2,7 @@ import torch
 import torch.nn as nn
 import numpy as np
 import matplotlib.pyplot as plt
+import matplotlib.cm as cm
 from matplotlib.lines import Line2D
 import pickle
 import pandas as pd
@@ -310,6 +311,15 @@ def bound_evo_w_theta(metric, Sm, delta, steps=100):
 
 
 
+def reachable_bounds(metrics_list, Sm, delta, steps=100):
+    res_dico = {}
+    for metric in metrics_list:
+        thetas, bounds = bound_evo_w_theta(metric, Sm, delta, steps=steps)
+        res_dico[metric] = bounds
+    return res_dico
+
+
+
 def pos_propor_w_theta(Sm, steps=100):
 
     Sm = Sm.sort_values('SR', ascending=True)
@@ -341,3 +351,70 @@ def runtime(sim_df, mode:str='dicho', greedy_steps:int=20):
         raise ValueError('mode should either be dicho or greedy')
     t1 = datetime.now()
     return (t1-t0).seconds
+
+
+
+
+def joint_control(metrics_and_targets, sgr_df, delta, plot=False, steps=100):
+
+    """
+    fun to compute g_theta satisfying target bounds for a set of metrics given by the user
+    if plot==True, then the function plots each theta interval satisfying target bound, for each metric in the specified set
+    """
+
+    metric_sign_mapping = {'standard': '<',
+                           'FP': '<', 'FN': '<',
+                           'FPR': '<', 'FNR': '<',
+                           'PPV': '>', 'SE': '>',
+                           'SP': '>'}
+    y_proj = -0.01
+    projection_handles = []
+
+    # Use a colormap to assign a unique color to each metric
+    num_metrics = len(metrics_and_targets)
+    color_map = cm.get_cmap('tab10', num_metrics)
+    colors = [color_map(i) for i in range(num_metrics)]
+    segments_per_metric = {key: [] for key in metrics_and_targets.keys()}
+
+    if plot:
+        plt.figure()
+
+    for i, (metric, target) in enumerate(metrics_and_targets.items()):
+        thetas, bounds = bound_evo_w_theta(metric, sgr_df, delta, steps=steps)
+        color = colors[i]
+
+        if metric_sign_mapping[metric] == '>':
+                mask = (np.array(bounds) > target)
+        else:
+            mask = (np.array(bounds) < target)
+
+        segments = get_segments(thetas, mask)
+        segments_per_metric[metric] = segments
+
+        if plot:
+            plt.plot(thetas, bounds, color=color, label=f'{metric} bound')
+            plt.axhline(y=target, color=color, linestyle='--', label=f'{metric} target')
+            plt.xlabel(r'$\theta$')
+            plt.ylabel('Metric bounds')
+            plt.tick_params(axis='y')
+
+            for (x_start, x_end) in segments:
+                plt.hlines(y_proj*i, x_start, x_end, colors=color, linewidth=2)
+
+            # Legend handle for projections
+            projection_handles.append(
+                Line2D([0], [0], color=color, linewidth=2, label=r'$\theta$ '+ f'/ {metric} {metric_sign_mapping[metric]} {target}')
+            )
+
+    if plot:
+        plt.ylim(bottom=y_proj - 0.02)
+        plt.legend(handles=projection_handles, loc='upper left')
+        plt.grid(True)
+        plt.tight_layout()
+        plt.show()
+    else:
+        intersected_intervals = compute_all_interval_intersections(segments_per_metric)
+        return {'theta_intervals' : intersected_intervals,
+                'best_theta' : best_theta(intersected_intervals)}
+
+

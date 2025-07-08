@@ -115,21 +115,3 @@ def metric_plots_with_imbalance(all_propor_dfs, proportions,
     plt.show()
 
 
-
-def get_segments(x, condition_mask):
-        segments = []
-        in_segment = False
-        for i in range(len(x)):
-            if condition_mask[i] and not in_segment:
-                start = x[i]
-                in_segment = True
-            elif not condition_mask[i] and in_segment:
-                end = x[i - 1]
-                segments.append((start, end))
-                in_segment = False
-        if in_segment:
-            segments.append((start, x[-1]))
-        return segments
-
-
-

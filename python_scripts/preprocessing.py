@@ -11,6 +11,7 @@ from torch.utils.data import DataLoader, Subset, Dataset
 import math
 import scipy.special
 import random as rd
+from itertools import product
 import torch.nn.functional as F
 import torchvision.models as models
 import matplotlib.pyplot as plt
@@ -214,5 +215,79 @@ def count_labels(dataset):
     counts = Counter(targets)
     return {label: counts.get(label, 0) for label in range(2)}
 
+
+
+def interval_intersection(intervals):
+    """
+    Given a list of intervals [(start1, end1), (start2, end2), ...],
+    returns their intersection as (start_max, end_min), or None if empty.
+    """
+    start = max(interval[0] for interval in intervals)
+    end = min(interval[1] for interval in intervals)
+    if start < end:
+        return (start, end)
+    return None  # No overlap
+
+
+
+def compute_all_interval_intersections(interval_dict):
+    """
+    Given a dict of {key: [(start, end), ...]}, computes all non-empty intersections
+    where one interval is selected from each key.
+    """
+    # Generate all combinations: one interval from each key
+    keys = list(interval_dict.keys())
+    interval_lists = [interval_dict[key] for key in keys]
+    
+    intersections = []
+    for combo in product(*interval_lists):
+        inter = interval_intersection(combo)
+        if inter is not None:
+            intersections.append(inter)
+    
+    return intersections
+
+
+
+def best_theta(intersection_intervals):
+    l=0
+    m = np.inf
+    try:
+        while l < len(intersection_intervals):
+            if intersection_intervals[l][0] < m: # looking for smallest theta through all the intervals 
+                m = intersection_intervals[l][0]
+            l += 1
+    except TypeError:
+        pass
+    return m
+
+
+
+def get_segments(x, condition_mask):
+    """
+    Identify and return contiguous segments in `x` where `condition_mask` is True.
+
+    Parameters:
+        x (list): A list of values (e.g., time or index values).
+        condition_mask (list of bool): A boolean list of the same length as `x`, 
+                                       indicating which elements satisfy the condition.
+
+    Returns:
+        list of tuples: A list of (start, end) pairs representing segments where 
+                        `condition_mask` is True.
+    """
+    segments = []
+    in_segment = False
+    for i in range(len(x)):
+        if condition_mask[i] and not in_segment:
+            start = x[i]
+            in_segment = True
+        elif not condition_mask[i] and in_segment:
+            end = x[i - 1]
+            segments.append((start, end))
+            in_segment = False
+    if in_segment:
+        segments.append((start, x[-1]))
+    return segments
 
 
