@@ -66,7 +66,7 @@ def B_star(delta, e, n, eps=1e-6, b1=0, b2=1):
     approximate solution at eps (in terms of FUN images)
     """
     if (e==n) or (n==0):
-        return np.inf
+        return 1
     if e==0:
         return 1-delta**(1/n)
 

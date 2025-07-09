@@ -181,16 +181,14 @@ def SGR_greedy_search(delta, r_star, Sm, metric, xi=1e-3, steps=100):
         selected_errs_count = emp_errs_count(selected_samples, loss = metric_loss_mapping[metric])
 
         if selected_errs_count == 0: 
-            # we reach excellent bound but usually with nearly 0 coverage 
-            # not always if excellent classifier f.. 
-            # but relying on an evolution of the bound purely by change of denominator (1s propor) => instability
+            # no mistake on selected subset => no mistake as next iters, so b* is stuck at 1-delta^(1/n)
             return {}
 
         b = B_star(delta, 
                    selected_errs_count,
                    selected_samples.shape[0])    
-        if b==np.inf:
-            continue
+        if b==1:
+            return {}
             
         B = bound(b, selected_samples, delta, metric, m=Sm.shape[0])
         
@@ -295,12 +293,15 @@ def bound_evo_w_theta(metric, Sm, delta, steps=100):
 
         selected_samples = Sm.loc[Sm.SR >= theta]
         selected_errs_count = emp_errs_count(selected_samples, loss = metric_loss_mapping[metric])
-        if (selected_errs_count==0) or selected_samples.shape[0]==0:
+        if (selected_errs_count==0):
             break
 
         b = B_star(delta, 
                    selected_errs_count,
-                   selected_samples.shape[0])        
+                   selected_samples.shape[0])
+        if b==1:
+            break
+        
         B = bound(b, selected_samples, delta, metric, m=Sm.shape[0])
         bounds.append(B) 
 
