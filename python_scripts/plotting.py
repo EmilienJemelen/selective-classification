@@ -32,7 +32,7 @@ def metric_plots(results, ylabel: str,
     axs[0].set_ylabel(ylabel)
     axs[0].set_xlim(xlim1[0], xlim1[1])
     axs[0].set_ylim(ylim[0], ylim[1])
-    #axs[0].legend()
+    axs[0].legend()
     axs[0].grid()
 
     # Subplot 2: Theta plot
@@ -58,7 +58,8 @@ def metric_plots(results, ylabel: str,
 def metric_plots_with_imbalance(all_propor_dfs, proportions,
                                 ylabel: str, ylim: list = [0, 1],
                                 xlim1: list = [0, 1], xlim2: list = [0, 1],
-                                title : str= None):
+                                title : str= None,
+                                show_left_legend=False):
     
     # Set up colormaps
     cmap_blue = cm.get_cmap('Blues')
@@ -97,6 +98,10 @@ def metric_plots_with_imbalance(all_propor_dfs, proportions,
     axs[0].set_xlim(xlim1)
     axs[0].set_ylim(ylim)
     axs[0].grid(True)
+    if show_left_legend:
+        cbar = fig.colorbar(sm, ax=axs[0], shrink=0.95)
+        cbar.set_label('Proportion of 1s (%)')
+        axs[0].legend(handles=[proxy_blue, proxy_orange])
     
     axs[1].set_xlabel(r'$\theta^*$')
     axs[1].set_ylabel(ylabel)

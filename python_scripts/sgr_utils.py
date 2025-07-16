@@ -163,6 +163,7 @@ def SGR_greedy_search(delta, r_star, Sn, metric, xi=1e-3, steps=100):
     Greedy search for LOWEST theta with bound close enough (xi) to r*
     """
     metric_loss_mapping = {'standard': 'standard',
+                           'FP':'FP', 'FN':'FN',
                            'FPR': 'FP', 'FNR': 'FN',
                            'PPV': 'FP', 'SE': 'FN',
                            'SP': 'FP'} 
@@ -316,7 +317,7 @@ def reachable_bounds(metrics_list, Sn, delta, steps=100):
     res_dico = {}
 
     # thetas and coverages coordinates
-    kappas = np.array(Sn.SR)
+    kappas = sorted(np.array(Sn.SR))
     thetas = np.linspace(kappas[0], kappas[-1], steps)
     res_dico['thetas'] =  sorted(thetas)
     res_dico['coverages'] = sorted([Sn.loc[Sn.SR >= theta].shape[0]/Sn.shape[0] for theta in thetas],reverse=True)
@@ -401,7 +402,7 @@ def joint_control(metrics_and_targets, sgr_df, delta, plot=False, steps=100):
         segments_per_metric[metric] = segments
 
         if plot:
-            plt.plot(thetas, bounds, color=color, label=f'{metric} bound')
+            plt.plot(thetas, bounds, color=color, label=f'{metric} bound', linewidth=1.5)
             plt.axhline(y=target, color=color, linestyle='--', label=f'{metric} target')
             plt.xlabel(r'$\theta$')
             plt.ylabel('Metric bounds')
