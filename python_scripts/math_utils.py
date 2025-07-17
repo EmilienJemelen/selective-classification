@@ -148,8 +148,8 @@ def integers_exp_spacing(start, end, num_points=40):
 
 def simulate_SGR_dataset(n, high_conf_propor=0.7, seed=42):
     """
-    Simulate a dataset with binary predictions (`y_true`, `y_pred`) and confidence scores (`SR`).
-    The probability of a mistake (`y_true != y_pred`) decreases as SR increases.
+    Simulate a dataset with binary predictions (`y_true`, `y_pred`) and confidence scores (`kappa`).
+    The probability of a mistake (`y_true != y_pred`) decreases as kappa increases.
 
     Parameters:
     -----------
@@ -164,7 +164,7 @@ def simulate_SGR_dataset(n, high_conf_propor=0.7, seed=42):
         DataFrame with columns:
         - 'y_true': True binary labels.
         - 'y_pred': Predicted labels (0 or 1).
-        - 'SR': Confidence score (Beta-distributed).
+        - 'kappa': Confidence score (Beta-distributed).
     """
     if seed is not None:
         np.random.seed(seed)
@@ -172,17 +172,17 @@ def simulate_SGR_dataset(n, high_conf_propor=0.7, seed=42):
     # y_true: binary, balanced classes
     y_true = np.random.choice([0, 1], size=n)
     # Generate two confidence ditributions using Beta distribution
-    SR = np.empty(n)
+    kappa = np.empty(n)
     match = np.random.rand(n) < high_conf_propor # draw high_conf_propor % of samples with high confidence predictions
-    SR[match] = beta.rvs(9, 1, size=match.sum())  # High confidence beta distribution, mean=0.9, variance=8.2e-3
-    SR[~match] = beta.rvs(3, 2, size=(~match).sum())  # Lower confidence distribution, mean=0.6, variance=0.02
+    kappa[match] = beta.rvs(9, 1, size=match.sum())  # High confidence beta distribution, mean=0.9, variance=8.2e-3
+    kappa[~match] = beta.rvs(3, 2, size=(~match).sum())  # Lower confidence distribution, mean=0.6, variance=0.02
 
     # accuracy = 0.7*0.9+0.3*0.6=0.81 in this setting
 
     # Create y_pred based on mistake probabilities
     y_pred = np.zeros(n)
     for i in range(n):
-        if np.random.rand() < SR[i]: # very likely if SR confidence is high
+        if np.random.rand() < kappa[i]: # very likely if kappa confidence is high
             y_pred[i] = y_true[i]  # correct prediction
         else:
             y_pred[i] = 1 - y_true[i]  # incorrect prediction
@@ -191,7 +191,7 @@ def simulate_SGR_dataset(n, high_conf_propor=0.7, seed=42):
     df = pd.DataFrame({
         'y_true': y_true,
         'y_pred': y_pred,
-        'SR': SR
+        'kappa': kappa
     })
 
     return df

@@ -40,11 +40,11 @@ def prepare_sgr_dico(dataloader, model, device, T):
     """
     Prepare dataframe containing exactly the required features to train SGR module
     true class of each sample, model predicted class, 
-    softmax response (SR) or any other confidence function output 
+    softmax response (kappa) or any other confidence function output 
     """
     sgr_dico = {'y_true' : np.array([]),
                 'y_pred' : np.array([]),
-                'SR' : np.array([])}
+                'kappa' : np.array([])}
     model.eval()
     with torch.no_grad():
         for images, labels in tqdm(dataloader):
@@ -57,7 +57,7 @@ def prepare_sgr_dico(dataloader, model, device, T):
 
             sgr_dico['y_true'] = np.concatenate((sgr_dico['y_true'], labels.cpu().numpy()))
             sgr_dico['y_pred'] = np.concatenate((sgr_dico['y_pred'], predicted_classes))
-            sgr_dico['SR'] = np.concatenate((sgr_dico['SR'], softmax_responses))
+            sgr_dico['kappa'] = np.concatenate((sgr_dico['kappa'], softmax_responses))
 
     return sgr_dico
 

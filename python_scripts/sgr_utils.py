@@ -126,8 +126,8 @@ def SGR_dicho(delta, r_star, Sn, k, metric, xi=1e-3, union=False):
     for i in range(k):
         
         z = int((zmin+zmax)/2)
-        theta = Sn.SR[z]
-        selected_samples = Sn.loc[Sn.SR >= theta]
+        theta = Sn.kappa[z]
+        selected_samples = Sn.loc[Sn.kappa >= theta]
         selected_errs_count = emp_errs_count(selected_samples, loss = metric)
 
         b = B_star(desired_prob, 
@@ -167,8 +167,8 @@ def SGR_greedy_search(delta, r_star, Sn, metric, xi=1e-3, steps=100):
                            'FPR': 'FP', 'FNR': 'FN',
                            'PPV': 'FP', 'SE': 'FN',
                            'SP': 'FP'} 
-    Sn = Sn.sort_values('SR', ascending=True)
-    kappas = np.array(Sn.SR)
+    Sn = Sn.sort_values('kappa', ascending=True)
+    kappas = np.array(Sn.kappa)
     
     for theta in np.linspace(kappas[0], kappas[-1], steps):
 
@@ -178,7 +178,7 @@ def SGR_greedy_search(delta, r_star, Sn, metric, xi=1e-3, steps=100):
         except:
             pass
 
-        selected_samples = Sn.loc[Sn.SR >= theta]
+        selected_samples = Sn.loc[Sn.kappa >= theta]
         selected_errs_count = emp_errs_count(selected_samples, loss = metric_loss_mapping[metric])
 
         if selected_errs_count == 0: 
@@ -224,7 +224,7 @@ def SGR_at_targets(train_set,test_set, k, delta = 0.001,
         
         if sgr_dico != {}:
             theta_star = sgr_dico['theta_star']
-            covered_test_set = test_set.loc[test_set.SR > theta_star]
+            covered_test_set = test_set.loc[test_set.kappa > theta_star]
             if covered_test_set.shape[0] > 0:
                 test_metric = emp_metric(covered_test_set, metric = metric)
             else:
@@ -252,7 +252,7 @@ def SGR_at_targets_on_imbalanced_sets(proportions_of_1, metric_targets,
     Args:
         proportions_of_1 (list of float): Target class-1 proportions.
         metric_targets (dict): Target metric values.
-        sgr_df (pd.DataFrame): Input balanced dataset with 'y_true' and 'SR' columns.
+        sgr_df (pd.DataFrame): Input balanced dataset with 'y_true' and 'kappa' columns.
         greedy_search_steps_num (int): Number of greedy search steps.
         delta (float): control proba
         metric: chosen metric
@@ -266,7 +266,7 @@ def SGR_at_targets_on_imbalanced_sets(proportions_of_1, metric_targets,
     for proportion_1, imbalanced_set in zip(proportions_of_1, imbalanced_datasets):
 
         train_set_ = imbalanced_set.iloc[:2*int(imbalanced_set.shape[0]/3)]
-        train_set_ = train_set_.sort_values('SR', ascending=True).reset_index(drop=True).copy()
+        train_set_ = train_set_.sort_values('kappa', ascending=True).reset_index(drop=True).copy()
         test_set_ = imbalanced_set.iloc[2*int(imbalanced_set.shape[0]/3):]
 
         results = SGR_at_targets(train_set_, test_set_, k=int(np.log2(train_set_.shape[0])),
@@ -286,13 +286,13 @@ def bound_evo_w_theta(metric, Sn, delta, steps=100):
                            'FPR': 'FP', 'FNR': 'FN',
                            'PPV': 'FP', 'SE': 'FN',
                            'SP': 'FP'}
-    Sn = Sn.sort_values('SR', ascending=True)
-    kappas = np.array(Sn.SR)
+    Sn = Sn.sort_values('kappa', ascending=True)
+    kappas = np.array(Sn.kappa)
     bounds, thetas = [], np.linspace(kappas[0], kappas[-1], steps)
 
     for theta in thetas:
 
-        selected_samples = Sn.loc[Sn.SR >= theta]
+        selected_samples = Sn.loc[Sn.kappa >= theta]
         selected_errs_count = emp_errs_count(selected_samples, loss = metric_loss_mapping[metric])
         if (selected_errs_count==0):
             break
@@ -317,10 +317,10 @@ def reachable_bounds(metrics_list, Sn, delta, steps=100):
     res_dico = {}
 
     # thetas and coverages coordinates
-    kappas = sorted(np.array(Sn.SR))
+    kappas = sorted(np.array(Sn.kappa))
     thetas = np.linspace(kappas[0], kappas[-1], steps)
     res_dico['thetas'] =  sorted(thetas)
-    res_dico['coverages'] = sorted([Sn.loc[Sn.SR >= theta].shape[0]/Sn.shape[0] for theta in thetas],reverse=True)
+    res_dico['coverages'] = sorted([Sn.loc[Sn.kappa >= theta].shape[0]/Sn.shape[0] for theta in thetas],reverse=True)
     # metrics bounds with respect to thetas
     for metric in metrics_list:
         _, bounds = bound_evo_w_theta(metric, Sn, delta, steps=steps)
@@ -332,13 +332,13 @@ def reachable_bounds(metrics_list, Sn, delta, steps=100):
 
 def pos_propor_w_theta(Sn, steps=100):
 
-    Sn = Sn.sort_values('SR', ascending=True)
-    kappas = np.array(Sn.SR)
+    Sn = Sn.sort_values('kappa', ascending=True)
+    kappas = np.array(Sn.kappa)
     pos_propor, thetas = [], np.linspace(kappas[0], kappas[-1], steps)
 
     for theta in thetas:
 
-        selected_samples = Sn.loc[Sn.SR >= theta]
+        selected_samples = Sn.loc[Sn.kappa >= theta]
         pos_propor.append(selected_samples.y_true.sum()/selected_samples.shape[0])
 
     return thetas, pos_propor
