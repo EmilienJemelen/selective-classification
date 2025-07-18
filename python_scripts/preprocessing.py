@@ -63,7 +63,7 @@ def prepare_sgr_dico(dataloader, model, device, T):
 
 
 
-def generate_imbalanced_datasets(balanced_dataset, proportions, label_col='y_true', seed=None):
+def generate_imbalanced_datasets(balanced_dataset, proportions, label_col='y_true', seed=42):
     """
     Create imbalanced datasets by downsampling class-1 samples while keeping all class-0 samples.
 

@@ -204,7 +204,7 @@ def SGR_greedy_search(delta, r_star, Sn, metric, xi=1e-3, steps=100):
 
 
 
-def SGR_at_targets(train_set,test_set, k, delta = 0.001, 
+def SGR_at_targets(train_set,test_set, k=None, delta = 0.001, 
                    metric_targets = [i/100 for i in range(1,15)], 
                    metric = 'standard', union=False, 
                    mode='greedy', steps=100):
