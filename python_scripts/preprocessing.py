@@ -7,7 +7,7 @@ import pandas as pd
 import torchvision.transforms as transforms
 import torchvision.datasets as datasets
 from torchvision.datasets import ImageFolder
-from torch.utils.data import DataLoader, Subset, Dataset
+from torch.utils.data import DataLoader, Subset, Dataset, WeightedRandomSampler
 import math
 import scipy.special
 import random as rd
@@ -33,6 +33,34 @@ def filter_classes(dataset, allowed_classes):
     """
     indices = [i for i, (_, label) in enumerate(dataset) if label in allowed_classes]
     return Subset(dataset, indices)
+
+
+
+def binarize_labels(dataset):
+    """ 
+    Binarize labels: 1 if airplane (class index 0), else 0
+    """
+    dataset.targets = [1 if label == 0 else 0 for label in dataset.targets]
+
+
+
+def get_subset_labels(subset, combined_dataset):
+    """
+    Extract labels for the subsets (needed for sampling)
+    """
+    return [combined_dataset[idx][1] for idx in subset.indices]
+
+
+
+def get_balanced_sampler(labels):
+    """
+    Compute weights for balanced sampling
+    """
+    class_sample_counts = torch.bincount(torch.tensor(labels))
+    weights = 1.0 / class_sample_counts.float()
+    sample_weights = [weights[label] for label in labels]
+    sampler = WeightedRandomSampler(sample_weights, num_samples=len(sample_weights), replacement=True)
+    return sampler
 
 
 
@@ -63,38 +91,51 @@ def prepare_sgr_dico(dataloader, model, device, T):
 
 
 
-def generate_imbalanced_datasets(balanced_dataset, proportions, label_col='y_true', seed=42):
+def generate_imbalanced_datasets(dataset, proportions, label_col='y_true', seed=42):
     """
-    Create imbalanced datasets by downsampling class-1 samples while keeping all class-0 samples.
+    Create datasets with specified class-1 proportions by downsampling the majority class (adaptive logic).
 
-    Assumes the input dataset is initially class-balanced and all values in `v` are <= 0.5.
+    If there are enough class-0s, downsample them. If not, downsample class-1s instead.
 
     Args:
-        train_set (pd.DataFrame): Input DataFrame with binary labels.
-        proportions (list of float): Target proportions of class-1 samples in the output datasets.
-        label_col (str): Name of the label column. Default is 'y_true'.
-        seed (int, optional): Random seed for reproducibility.
+        dataset (pd.DataFrame): Input DataFrame with binary labels.
+        proportions (list of float): Desired proportions of class-1 samples (e.g., [0.1, 0.2]).
+        label_col (str): Name of the label column.
+        seed (int): Random seed for reproducibility.
 
     Returns:
-        list of pd.DataFrame: List of datasets with adjusted class-1 proportions.
+        list of pd.DataFrame: List of datasets matching the target class-1 proportions.
     """
     np.random.seed(seed)
-    
-    # Split the dataset
-    df_pos = balanced_dataset[balanced_dataset[label_col] == 1]
-    df_neg = balanced_dataset[balanced_dataset[label_col] == 0]
-    
+
+    df_pos = dataset[dataset[label_col] == 1]
+    df_neg = dataset[dataset[label_col] == 0]
+
+    N1 = len(df_pos)
     N0 = len(df_neg)
+
     datasets = []
 
     for p in proportions:
-        N1 = int(p * balanced_dataset.shape[0])
-        N1 = min(N1, len(df_pos))  # Just in case
+        if not (0 < p < 1):
+            raise ValueError(f"Proportion must be between 0 and 1 (exclusive). Got {p}")
 
-        df_pos_sampled = df_pos.sample(n=N1, random_state=seed, replace=False)
-        df_combined = pd.concat([df_neg, df_pos_sampled], axis=0).sample(frac=1, random_state=seed).reset_index(drop=True)
+        # Target total size to achieve proportion p of class-1
+        N_total = int(N1 / p)
+        N0_required = N_total - N1
 
-        datasets.append(df_combined)
+        if N0_required <= N0:
+            # Downsample class-0
+            df_neg_sampled = df_neg.sample(n=N0_required, random_state=seed, replace=False)
+            df_combined = pd.concat([df_pos, df_neg_sampled], axis=0)
+        else:
+            # Not enough class-0s to meet proportion — fallback to downsampling class-1
+            N1_required = int(p * (N0 + N1))  # recalculate based on full dataset size
+            df_pos_sampled = df_pos.sample(n=N1_required, random_state=seed, replace=False)
+            df_combined = pd.concat([df_pos_sampled, df_neg], axis=0)
+
+        df_shuffled = df_combined.sample(frac=1, random_state=seed).reset_index(drop=True)
+        datasets.append(df_shuffled)
 
     return datasets
 
