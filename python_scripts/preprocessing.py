@@ -91,7 +91,7 @@ def prepare_sgr_dico(dataloader, model, device, T):
 
 
 
-def generate_imbalanced_datasets(dataset, proportions, label_col='y_true', seed=42):
+def generate_imbalanced_datasets(dataset, proportions, label_col='y_true', seed=0):
     """
     Create datasets with specified class-1 proportions by downsampling the majority class (adaptive logic).
 
@@ -117,6 +117,10 @@ def generate_imbalanced_datasets(dataset, proportions, label_col='y_true', seed=
     datasets = []
 
     for p in proportions:
+        if p is None:
+            datasets.append(dataset.sample(frac=1, random_state=seed).reset_index(drop=True))
+            continue
+        
         if not (0 < p < 1):
             raise ValueError(f"Proportion must be between 0 and 1 (exclusive). Got {p}")
 
@@ -176,7 +180,7 @@ def compute_mean_std(dataset_root):
 
 
 
-def split_balanced_dataset(root, transform=None, train_size=0.3, val_size=0.2, seed=42):
+def split_balanced_dataset(root, transform=None, train_size=0.3, val_size=0.2, seed=0):
     """
     Split a binary image classification dataset into balanced train, validation, and test subsets.
 

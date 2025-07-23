@@ -93,11 +93,11 @@ def bound(b, selected_samples, delta, metric, m):
 
 
 
-def terminal_condition(selected_errs_count, bound, r_star, xi, metric):
+def terminal_condition(selected_errs_count, bound, r_star, metric, tolerance=1e-2):
     if metric in ['standard', 'FP', 'FN', 'FPR', 'FNR']:
-        return True if ((selected_errs_count == 0) and (bound > r_star + xi)) else False
+        return True if ((selected_errs_count == 0) and (bound > r_star + tolerance)) else False
     elif metric in ['PPV', 'SE', 'SP']:
-        return True if ((selected_errs_count == 0) and (bound < r_star - xi)) else False
+        return True if ((selected_errs_count == 0) and (bound < r_star - tolerance)) else False
     else:
         raise ValueError('invalid metric')
 
@@ -113,7 +113,7 @@ def decrease_theta(bound, r_star, metric):
 
 
 
-def SGR_dicho(delta, r_star, Sn, k, metric, xi=1e-3, union=False):
+def SGR_dicho(delta, r_star, Sn, k, metric, union=False):
     """
     General Selection with Guaranteed Risk (SGR) algorithm
     """
@@ -150,17 +150,17 @@ def SGR_dicho(delta, r_star, Sn, k, metric, xi=1e-3, union=False):
 
 
 
-def satisfaction(bound, r_star, metric, xi=1e-3):
+def satisfaction(bound, r_star, metric, tolerance=1e-2):
     if metric in ['standard', 'FP', 'FN', 'FPR', 'FNR']:
-        return True if (bound <= r_star + xi) else False
+        return True if ((bound <= r_star) and (bound > r_star - tolerance)) else False # making sure bound is not too far from target.. otherwise the guarantee is no use
     else:
-        return True if (bound >= r_star - xi) else False
+        return True if ((bound >= r_star) and (bound < r_star + tolerance)) else False
 
         
 
-def SGR_greedy_search(delta, r_star, Sn, metric, xi=1e-3, steps=100):
+def SGR_greedy_search(delta, r_star, Sn, metric, steps=100):
     """
-    Greedy search for LOWEST theta with bound close enough (xi) to r*
+    Greedy search for LOWEST theta with bound close enough to r*
     """
     metric_loss_mapping = {'standard': 'standard',
                            'FP':'FP', 'FN':'FN',
@@ -192,8 +192,10 @@ def SGR_greedy_search(delta, r_star, Sn, metric, xi=1e-3, steps=100):
             return {}
             
         B = bound(b, selected_samples, delta, metric, m=Sn.shape[0])
-        
-        if satisfaction(B, r_star, metric, xi=xi):
+        if (B>=1) or (B<=0):
+            break
+
+        if satisfaction(B, r_star, metric):
             return {'theta_star' : theta,
                     'bound' : B,
                     'delta' : delta,
@@ -218,7 +220,7 @@ def SGR_at_targets(train_set,test_set, k=None, delta = 0.001,
         if mode == 'dicho':
             sgr_dico = SGR_dicho(delta, r_star, train_set, k, metric = metric, union = union)
         elif mode == 'greedy':
-            sgr_dico = SGR_greedy_search(delta, r_star, train_set, metric, xi=1e-3, steps=steps)
+            sgr_dico = SGR_greedy_search(delta, r_star, train_set, metric, steps=steps)
         else:
             raise ValueError('mode should be either "greedy" or "dicho"')
         
@@ -261,7 +263,7 @@ def SGR_at_targets_on_imbalanced_sets(proportions_of_1, metric_targets,
         pd.DataFrame: Results with class-1 proportions.
     """
     all_propor_dfs = pd.DataFrame()
-    imbalanced_datasets = generate_imbalanced_datasets(sgr_df, proportions_of_1, seed=42)
+    imbalanced_datasets = generate_imbalanced_datasets(sgr_df, proportions_of_1, seed=0)
 
     for proportion_1, imbalanced_set in zip(proportions_of_1, imbalanced_datasets):
 
@@ -304,6 +306,8 @@ def bound_evo_w_theta(metric, Sn, delta, steps=100):
             break
         
         B = bound(b, selected_samples, delta, metric, m=Sn.shape[0])
+        if (B>=1) or (B<=0):
+            break
         bounds.append(B) 
 
     while len(bounds) < len(thetas):
@@ -353,7 +357,7 @@ def runtime(sim_df, mode:str='dicho', greedy_steps:int=20):
     if mode=='dicho':
         res = SGR_dicho(delta=1e-3, r_star=0.05, 
                         Sn=sim_df, k=int(np.log2(sim_df.shape[0])),
-                        metric='standard', xi=1e-3, union=False)
+                        metric='standard', union=False)
     elif mode=='greedy':
         res = SGR_greedy_search(delta=1e-3, r_star=0.05, Sn=sim_df, 
                                 metric='standard', steps=greedy_steps)
