@@ -85,12 +85,15 @@ def upper_bound_denominator(metric, selected_samples, delta, m):
 
 def bound(b, selected_samples, delta, metric, m):
     if metric in ['standard', 'FP', 'FN']:
-        return b
+        B = b
     elif metric in ['FPR', 'FNR']:
-        return b/abs(upper_bound_denominator(metric, selected_samples, delta, m))
+        B = b/abs(upper_bound_denominator(metric, selected_samples, delta, m))
     else: # PPV, SE, SP
-        return 1 - b/abs(upper_bound_denominator(metric, selected_samples, delta ,m))
-
+        B = 1 - b/abs(upper_bound_denominator(metric, selected_samples, delta ,m))
+    if (B>=1) or (B<=0):
+        return np.nan
+    else:
+        return B
 
 
 def terminal_condition(selected_errs_count, bound, r_star, metric, tolerance=1e-2):
@@ -113,7 +116,7 @@ def decrease_theta(bound, r_star, metric):
 
 
 
-def SGR_dicho(delta, r_star, Sn, k, metric, union=False):
+def SGR_dicho(delta, r_star, Sn, k, metric, union=False, tolerance=1e-2):
     """
     General Selection with Guaranteed Risk (SGR) algorithm
     """
@@ -142,6 +145,9 @@ def SGR_dicho(delta, r_star, Sn, k, metric, union=False):
         else:
             zmin = z
 
+    if abs(r_star - b) > tolerance:
+        return {}
+
     return {'theta_star' : theta,
             'bound' : b,
             'delta' : delta,
@@ -149,18 +155,10 @@ def SGR_dicho(delta, r_star, Sn, k, metric, union=False):
             'emp_metric' : emp_metric(selected_samples, metric = metric)}
 
 
-
-def satisfaction(bound, r_star, metric, tolerance=1e-2):
-    if metric in ['standard', 'FP', 'FN', 'FPR', 'FNR']:
-        return True if ((bound <= r_star) and (bound > r_star - tolerance)) else False # making sure bound is not too far from target.. otherwise the guarantee is no use
-    else:
-        return True if ((bound >= r_star) and (bound < r_star + tolerance)) else False
-
         
-
-def SGR_greedy_search(delta, r_star, Sn, metric, steps=100):
+def SGR_greedy_search(delta, r_star, Sn, metric, steps=100, tolerance=1e-2):
     """
-    Greedy search for LOWEST theta with bound close enough to r*
+    Greedy search for LOWEST theta with bound close enough to r* (by tolerance param)
     """
     metric_loss_mapping = {'standard': 'standard',
                            'FP':'FP', 'FN':'FN',
@@ -192,10 +190,10 @@ def SGR_greedy_search(delta, r_star, Sn, metric, steps=100):
             return {}
             
         B = bound(b, selected_samples, delta, metric, m=Sn.shape[0])
-        if (B>=1) or (B<=0):
-            break
+        if np.isnan(B):
+            return {}
 
-        if satisfaction(B, r_star, metric):
+        if abs(r_star - B) < tolerance:
             return {'theta_star' : theta,
                     'bound' : B,
                     'delta' : delta,
@@ -306,7 +304,7 @@ def bound_evo_w_theta(metric, Sn, delta, steps=100):
             break
         
         B = bound(b, selected_samples, delta, metric, m=Sn.shape[0])
-        if (B>=1) or (B<=0):
+        if np.isnan(B):
             break
         bounds.append(B) 
 
