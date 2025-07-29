@@ -116,7 +116,15 @@ def decrease_theta(bound, r_star, metric):
 
 
 
-def SGR_dicho(delta, r_star, Sn, k, metric, union=False, tolerance=1e-2):
+def satisfied(bound, r_star, metric, tolerance):
+    if metric in ['standard', 'FP', 'FN', 'FPR', 'FNR']:
+        return (True if bound < r_star + tolerance else False)
+    else:
+        return (True if bound > r_star - tolerance else False)
+
+
+
+def SGR_dicho(delta, r_star, Sn, k, metric, union=False, tolerance=1e-3):
     """
     General Selection with Guaranteed Risk (SGR) algorithm
     """
@@ -145,7 +153,7 @@ def SGR_dicho(delta, r_star, Sn, k, metric, union=False, tolerance=1e-2):
         else:
             zmin = z
 
-    if abs(r_star - b) > tolerance:
+    if not satisfied(b, r_star, metric, tolerance):
         return {}
 
     return {'theta_star' : theta,
@@ -156,9 +164,9 @@ def SGR_dicho(delta, r_star, Sn, k, metric, union=False, tolerance=1e-2):
 
 
         
-def SGR_greedy_search(delta, r_star, Sn, metric, steps=100, tolerance=1e-2):
+def SGR_greedy_search(delta, r_star, Sn, metric, steps=100, tolerance=1e-3):
     """
-    Greedy search for LOWEST theta with bound close enough to r* (by tolerance param)
+    Greedy search for LOWEST theta with bound close enough to r* 
     """
     metric_loss_mapping = {'standard': 'standard',
                            'FP':'FP', 'FN':'FN',
@@ -193,7 +201,7 @@ def SGR_greedy_search(delta, r_star, Sn, metric, steps=100, tolerance=1e-2):
         if np.isnan(B):
             return {}
 
-        if abs(r_star - B) < tolerance:
+        if satisfied(B, r_star, metric, tolerance):
             return {'theta_star' : theta,
                     'bound' : B,
                     'delta' : delta,
