@@ -24,6 +24,7 @@ from collections import defaultdict
 from pathlib import Path
 from collections import Counter
 from datetime import datetime
+from sklearn.utils import resample
 
 
 
@@ -180,60 +181,68 @@ def compute_mean_std(dataset_root):
 
 
 
-def split_balanced_dataset(root, transform=None, train_size=0.3, val_size=0.2, seed=0):
+def split_and_balance_dataset(root, transform=None, seed=0, train_size=0.4, val_size=0.1):
     """
-    Split a binary image classification dataset into balanced train, validation, and test subsets.
+    Split a binary image classification dataset into train (40%), val (10%), and test (50%) subsets,
+    then oversample minority class in train and val sets for balance.
 
     Args:
-        root (str): Path to the root directory of the dataset (organized in class-specific subfolders).
-        transform (callable, optional): Transform to apply to the images. Defaults to None.
-        train_size (float): Proportion of each class to allocate to the training set.
-        val_size (float): Proportion of each class to allocate to the validation set.
+        root (str): Root directory of the dataset (subfolders for each class).
+        transform (callable, optional): Transformations to apply to images.
         seed (int): Random seed for reproducibility.
 
     Returns:
-        Tuple[Subset, Subset, Subset]: Train, validation, and test subsets of the dataset.
+        Tuple[Subset, Subset, Subset]: Balanced train, balanced val, and original test subsets.
     """
     dataset = ImageFolder(root=root, transform=transform)
     targets = np.array(dataset.targets)
     rng = np.random.default_rng(seed)
 
-    # Get indices by class
-    class_indices = defaultdict(list)
-    for idx, label in enumerate(targets):
-        class_indices[label].append(idx)
+    # Ensure binary classification
+    classes = np.unique(targets)
+    assert len(classes) == 2, "Expected binary classification dataset (2 classes)."
 
-    # Make sure we only have two classes (binary case)
-    assert len(class_indices) == 2, "Expected binary classification dataset (2 classes)."
+    # Split indices into train (40%), val (10%), test (50%)
+    indices = np.arange(len(targets))
+    rng.shuffle(indices)
 
-    # Find minimum number of samples across the two classes
-    min_class_len = min(len(idxs) for idxs in class_indices.values())
+    n_total = len(indices)
+    n_train = int(train_size * n_total)
+    n_val = int(val_size * n_total)
 
-    # Compute counts per split
-    n_train = int(train_size * min_class_len)
-    n_val = int(val_size * min_class_len)
+    train_indices = indices[:n_train]
+    val_indices = indices[n_train:n_train + n_val]
+    test_indices = indices[n_train + n_val:]
 
-    # Split per class
-    train_indices, val_indices, test_indices = [], [], []
+    # Helper to oversample a binary split
+    def oversample(indices_subset):
+        labels = targets[indices_subset]
+        class0_indices = [i for i in indices_subset if targets[i] == 0]
+        class1_indices = [i for i in indices_subset if targets[i] == 1]
 
-    for cls, idxs in class_indices.items():
-        idxs = rng.permutation(idxs)
-        train = idxs[:n_train]
-        val = idxs[n_train:n_train + n_val]
-        test = idxs[n_train + n_val:]
-        
-        train_indices.extend(train)
-        val_indices.extend(val)
-        test_indices.extend(test)
+        # Determine majority and minority
+        if len(class0_indices) > len(class1_indices):
+            majority, minority = class0_indices, class1_indices
+        else:
+            majority, minority = class1_indices, class0_indices
 
-    # Shuffle final splits
-    rng.shuffle(train_indices)
-    rng.shuffle(val_indices)
-    rng.shuffle(test_indices)
+        # Oversample minority to match majority
+        oversampled_minority = resample(minority,
+                                        replace=True,
+                                        n_samples=len(majority),
+                                        random_state=seed)
+        balanced_indices = majority + oversampled_minority
+        rng.shuffle(balanced_indices)
+        return balanced_indices
 
+    # Balance train and val sets
+    train_indices_balanced = oversample(train_indices)
+    val_indices_balanced = oversample(val_indices)
+
+    # Return as PyTorch Subsets
     return (
-        Subset(dataset, train_indices),
-        Subset(dataset, val_indices),
+        Subset(dataset, train_indices_balanced),
+        Subset(dataset, val_indices_balanced),
         Subset(dataset, test_indices),
     )
 
