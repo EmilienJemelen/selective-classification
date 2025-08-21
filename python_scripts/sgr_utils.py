@@ -273,9 +273,9 @@ def SGR_at_targets_on_imbalanced_sets(proportions_of_1, metric_targets,
 
     for proportion_1, imbalanced_set in zip(proportions_of_1, imbalanced_datasets):
 
-        train_set_ = imbalanced_set.iloc[:2*int(imbalanced_set.shape[0]/3)]
+        train_set_ = imbalanced_set.iloc[:int(imbalanced_set.shape[0]/2)]
         train_set_ = train_set_.sort_values('kappa', ascending=True).reset_index(drop=True).copy()
-        test_set_ = imbalanced_set.iloc[2*int(imbalanced_set.shape[0]/3):]
+        test_set_ = imbalanced_set.iloc[int(imbalanced_set.shape[0]/2):]
 
         results = SGR_at_targets(train_set_, test_set_, k=int(np.log2(train_set_.shape[0])),
                                 delta=delta, metric_targets=metric_targets, metric=metric,
