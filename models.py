@@ -38,15 +38,24 @@ class CNN_MCdropout(nn.Module):
             return torch.ones_like(x)
         mask = (torch.rand_like(x) > p).float() / (1 - p)
         return mask
-
+    
     def forward(self, x):
-        x = F.relu(self.model.conv1(x)) * self.dropout_mask(x, self.p1)
+        #Bloc 1
+        x = F.relu(self.model.conv1(x))
+        x = x * self.dropout_mask(x, self.p1)
         x = self.model.pool(x)
-        x = F.relu(self.model.conv2(x)) * self.dropout_mask(x, self.p2)
+        #Bloc 2
+        x = F.relu(self.model.conv2(x))
+        x = x * self.dropout_mask(x, self.p2)
         x = self.model.pool(x)
-        x = F.relu(self.model.conv3(x)) * self.dropout_mask(x, self.p3)
+        #Bloc 3
+        x = F.relu(self.model.conv3(x))
+        x = x * self.dropout_mask(x, self.p3)
         x = self.model.pool(x)
+        #Flatten pour les fully conected
         x = x.view(x.size(0), -1)
-        x = F.relu(self.model.fc1(x)) * self.dropout_mask(x, self.p4)
+        #Fully connected layers
+        x = F.relu(self.model.fc1(x))
+        x = x * self.dropout_mask(x, self.p4)
         x = self.model.fc2(x)
         return x

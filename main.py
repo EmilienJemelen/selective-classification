@@ -19,29 +19,30 @@ def main():
     device = config.DEVICE
     trainloader, valloader = load_data(config.BATCH_SIZE)
     
-    model = SimpleCNN().to(device)
+    base_model = SimpleCNN().to(device)
     if os.path.exists(config.MODEL_PATH):
         print(f"Chargement du modèle depuis {config.MODEL_PATH}")
-        model.load_state_dict(torch.load(config.MODEL_PATH, map_location=device))
+        base_model.load_state_dict(torch.load(config.MODEL_PATH, map_location=device))
     else:
         print("Aucun modèle trouvé. Entraînement en cours...")
-        model = train_model(model, trainloader, valloader, device, config.EPOCHS, config.MODEL_PATH)
+        base_model = train_model(base_model, trainloader, valloader, device, config.EPOCHS, config.MODEL_PATH)
         print("Entraînement terminé et modèle sauvegardé.")
     
-    val_loss, val_acc = evaluate(model, valloader, device)
+    val_loss, val_acc = evaluate(base_model, valloader, device)
     print(f"Validation Accuracy : {val_acc:.4f} - Loss : {val_loss:.4f}")
 
-    model = CNN_MCdropout(model).to(device)
+    model = CNN_MCdropout(base_model).to(device)
     
     # Tester sur un batch
     X, Y = next(iter(valloader))
     X, Y = X.to(device), Y.to(device)
+    T = config.MC_T
     
     user_metrics = input(
     "Quelles métriques voulez-vous calculer ? (mc_estimate, variance, predictive_entropy, relative_norm)\n"
     "Vous pouvez en choisir plusieurs, séparées par des virgules : ")
     user_metrics = [m.strip() for m in user_metrics.split(",")]
-    outputs, mean_probs, metric_values = generate_mc_outputs(model, X, T=1000, metrics=user_metrics, labels=Y)
+    outputs, mean_probs, metric_values = generate_mc_outputs(model, X, T, metrics=user_metrics, labels=Y)
     print(f"Liste des métriques choisies par l\'utilisateur : {user_metrics}")
     for metric in user_metrics:
         print(f"Métrique choisie : {metric}")

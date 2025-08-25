@@ -16,7 +16,7 @@ def evaluate(model, dataloader, device):
             correct += predicted.eq(targets).sum().item()
     return total_loss/len(dataloader), correct/total
 
-def train_model(model, trainloader, valloader, device, epochs=5, save_path="best.pt"):
+def train_model(model, trainloader, valloader, device, epochs, save_path):
     model = model.to(device)
     criterion = nn.CrossEntropyLoss()
     optimizer = optim.Adam(model.parameters(), lr=0.001)

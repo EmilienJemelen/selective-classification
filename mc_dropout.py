@@ -1,7 +1,7 @@
 import torch
 import torch.nn.functional as F
 
-def mc_predict_mean_probs(model, X, T=100):
+def mc_predict_mean_probs(model, X, T):
     model.train()
     probs_list = []
     with torch.no_grad():

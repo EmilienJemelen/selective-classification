@@ -1,7 +1,7 @@
 import torch
 import torch.nn.functional as F
 
-def generate_mc_outputs(model, X, T=1000, metrics="mc_estimate", labels=None):
+def generate_mc_outputs(model, X, T, metrics="mc_estimate", labels=None):
     model.train()  # dropout actif en inférence
     outputs = []
     with torch.no_grad():
