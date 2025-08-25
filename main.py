@@ -29,8 +29,16 @@ def main():
     X, Y = next(iter(valloader))
     X, Y = X.to(device), Y.to(device)
     
-    outputs, mean_probs, mc_metric = generate_mc_outputs(mc_model, X, config.MC_T, config.MC_METRIC)
-    print("MC Dropout metric:", mc_metric)
+    user_metrics = input(
+    "Quelles métriques voulez-vous calculer ? (mc_estimate, variance, predictive_entropy, relative_norm)\n"
+    "Vous pouvez en choisir plusieurs, séparées par des virgules : ")
+    user_metrics = [m.strip() for m in user_metrics.split(",")]
+    outputs, mean_probs, metric_values = generate_mc_outputs(model, X, T=1000, metrics=user_metrics, labels=Y)
+    print(f"Liste des métriques choisies par l\'utilisateur : {user_metrics}")
+    for metric in user_metrics:
+        print(f"Métrique choisie : {metric}")
+        print(f"Résultat : {metric_values[metric]}\n")
+    
 
 if __name__ == "__main__":
     main()
