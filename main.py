@@ -1,3 +1,4 @@
+import os
 import torch
 from torch.utils.data import DataLoader
 from torchvision import datasets, transforms
@@ -18,12 +19,19 @@ def main():
     device = config.DEVICE
     trainloader, valloader = load_data(config.BATCH_SIZE)
     
-    model = SimpleCNN()
-    model = train_model(model, trainloader, valloader, device, config.EPOCHS, config.MODEL_PATH)
+    model = SimpleCNN().to(device)
+    if os.path.exists(config.MODEL_PATH):
+        print(f"Chargement du modèle depuis {config.MODEL_PATH}")
+        model.load_state_dict(torch.load(config.MODEL_PATH, map_location=device))
+    else:
+        print("Aucun modèle trouvé. Entraînement en cours...")
+        model = train_model(model, trainloader, valloader, device, config.EPOCHS, config.MODEL_PATH)
+        print("Entraînement terminé et modèle sauvegardé.")
     
-    # Charger meilleur modèle et activer MC Dropout
-    model.load_state_dict(torch.load(config.MODEL_PATH, map_location=device))
-    mc_model = CNN_MCdropout(model).to(device)
+    val_loss, val_acc = evaluate(model, valloader, device)
+    print(f"Validation Accuracy : {val_acc:.4f} - Loss : {val_loss:.4f}")
+
+    model = CNN_MCdropout(model).to(device)
     
     # Tester sur un batch
     X, Y = next(iter(valloader))
