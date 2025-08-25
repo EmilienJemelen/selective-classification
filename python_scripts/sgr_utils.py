@@ -438,3 +438,38 @@ def joint_control(metrics_and_targets, sgr_df, delta, plot=False, steps=100):
                 'best_theta' : best_theta(intersected_intervals)}
 
 
+
+def mean_abs_diff(u, v):
+    u = np.asarray(u)
+    v = np.asarray(v)
+    
+    # Mask to filter out nan entries
+    not_masked = ~np.isnan(u) & ~np.isnan(v)
+    
+    # If no valid entries, return nan
+    if not np.any(not_masked):
+        return np.nan
+    
+    diffs = np.abs(u[not_masked] - v[not_masked])
+    return np.mean(diffs)
+
+
+
+def ABC(ds, metric, steps=30, delta=1e-3):
+    """
+    metric must be in 'standard', 'FP', 'FN', 'FPR', 'FNR'
+    """
+    train_set = ds.iloc[:int(len(ds)/2)]
+    train_set = train_set.sort_values('kappa', ascending=True).reset_index(drop=True).copy()
+    test_set = ds.iloc[int(len(ds)/2):]
+
+    thetas, bounds = bound_evo_w_theta(metric, train_set, delta, steps=steps)
+    emp_metrics = []
+    for theta in thetas:
+        try:
+            selected_set = test_set.loc[test_set.kappa >= theta].copy()
+            emp_metrics.append(emp_metric(selected_set, metric=metric))
+        except ValueError:
+            emp_metrics.append(np.nan)
+
+    return mean_abs_diff(bounds, emp_metrics)
