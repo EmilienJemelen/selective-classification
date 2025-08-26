@@ -25,37 +25,38 @@ class SimpleCNN(nn.Module):
         return x
 
 class CNN_MCdropout(nn.Module):
-    def __init__(self, model, p1=0.1, p2=0.1, p3=0.1, p4=0.1):
+    def __init__(self, model, mc_layers=None, p1=0.1, p2=0.1, p3=0.1, p4=0.1):
         super().__init__()
         self.model = model
-        self.p1 = p1
-        self.p2 = p2
-        self.p3 = p3
-        self.p4 = p4
-
-    def dropout_mask(self, x, p):
-        if not self.training or p == 0.0:
+        self.mc_layers = mc_layers or [] # si None, aucune couche à masquer
+        self.p1 = p1  # dropout sur conv1 output
+        self.p2 = p2  # dropout sur conv2 output
+        self.p3 = p3  # dropout sur conv3 output
+        self.p4 = p4  # dropout sur fc1 output
+        # pas de dropout sur la dernière couche
+        self.ps = {'conv1': p1, 'conv2': p2, 'conv3': p3, 'fc1': p4}
+    
+    def dropout_mask(self, x, p, active=True):
+        if not self.training or p == 0.0 or not active:
             return torch.ones_like(x)
         mask = (torch.rand_like(x) > p).float() / (1 - p)
         return mask
-    
+
     def forward(self, x):
-        #Bloc 1
         x = F.relu(self.model.conv1(x))
-        x = x * self.dropout_mask(x, self.p1)
+        x = self.dropout_mask(x, self.ps['conv1'], 'conv1' in self.mc_layers) * x
         x = self.model.pool(x)
-        #Bloc 2
+
         x = F.relu(self.model.conv2(x))
-        x = x * self.dropout_mask(x, self.p2)
+        x = self.dropout_mask(x, self.ps['conv2'], 'conv2' in self.mc_layers) * x
         x = self.model.pool(x)
-        #Bloc 3
+
         x = F.relu(self.model.conv3(x))
-        x = x * self.dropout_mask(x, self.p3)
+        x = self.dropout_mask(x, self.ps['conv3'], 'conv3' in self.mc_layers) * x
         x = self.model.pool(x)
-        #Flatten pour les fully conected
+
         x = x.view(x.size(0), -1)
-        #Fully connected layers
         x = F.relu(self.model.fc1(x))
-        x = x * self.dropout_mask(x, self.p4)
+        x = self.dropout_mask(x, self.ps['fc1'], 'fc1' in self.mc_layers) * x
         x = self.model.fc2(x)
-        return x
+        return x  #pas encore normalisé
