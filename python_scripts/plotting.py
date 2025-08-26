@@ -7,6 +7,7 @@ import pandas as pd
 import math
 import scipy.special
 import random as rd
+import torch
 import matplotlib.pyplot as plt
 from tqdm import tqdm
 import warnings
@@ -120,3 +121,31 @@ def metric_plots_with_imbalance(all_propor_dfs, proportions,
     plt.show()
 
 
+
+def show_cifar10(t: torch.Tensor, title=None):
+    """
+    Display a CIFAR-10 tensor image (normalized with CIFAR-10 stats).
+    t: shape (C,H,W) or (H,W,C), values normalized.
+    """
+    mean = torch.tensor([0.4914, 0.4822, 0.4465]).view(3,1,1)
+    std  = torch.tensor([0.2023, 0.1994, 0.2010]).view(3,1,1)
+
+    x = t.detach().cpu().float()
+
+    # ensure CHW
+    if x.ndim == 3 and x.shape[0] in (1,3):
+        chw = x
+    elif x.ndim == 3 and x.shape[2] in (1,3):
+        chw = x.permute(2,0,1)
+    else:
+        raise ValueError("Expected (C,H,W) or (H,W,C) with C=1 or 3.")
+
+    # unnormalize CIFAR-10
+    chw = chw * std + mean
+
+    # clamp to [0,1]
+    img = chw.clamp(0,1).permute(1,2,0).numpy()
+    plt.imshow(img)
+    if title: plt.title(title)
+    plt.axis("off")
+    plt.show()
