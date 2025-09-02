@@ -13,46 +13,33 @@ from tqdm import tqdm
 import warnings
 from matplotlib.lines import Line2D
 from matplotlib import MatplotlibDeprecationWarning
+from python_scripts.sgp_utils import *
 warnings.filterwarnings("ignore", category=MatplotlibDeprecationWarning)
 
 
 
-def metric_plots(results, ylabel: str, 
-                 xlim1: list = [0, 1], xlim2: list = [0, 1],
-                 ylim: list = [0, 1],
-                 title : str =  None):
+def metric_plots(all_results:dict, 
+                 metric: str,
+                 lines_list:list,
+                 xlim: list = [0, 1],
+                 ylim : list = [0, 1],
+                 title : str =  ''):
+
+    for line in lines_list:
+        kappa, x_axis, colname, name, c, style = line['kappa'], line['x_axis'], line['colname'], line['name'], line['colour'], line['style']
+        plt.plot(all_results[kappa][x_axis], all_results[kappa][colname], label=name, c=c, linestyle=style)
     
-    fig, axs = plt.subplots(1, 2, figsize=(12, 5))
-
-    # Subplot 1: Coverage plot
-    axs[0].plot(results.test_coverage, results.metric_target, label='Target', c='red')
-    axs[0].plot(results.test_coverage, results.metric_bound, label='Guaranteed', linestyle='--')
-    axs[0].plot(results.train_coverage, results.train_metric, label='On training set', linestyle='--')
-    axs[0].plot(results.test_coverage, results.test_metric, label='On test set')
-    axs[0].set_xlabel('Coverage')
-    axs[0].set_ylabel(ylabel)
-    axs[0].set_xlim(xlim1[0], xlim1[1])
-    axs[0].set_ylim(ylim[0], ylim[1])
-    axs[0].legend()
-    axs[0].grid()
-
-    # Subplot 2: Theta plot
-    axs[1].plot(results.theta_star, results.metric_target, label='Target', c='red')
-    axs[1].plot(results.theta_star, results.metric_bound, label='Guaranteed', linestyle='--')
-    axs[1].plot(results.theta_star, results.train_metric, label='On training set', linestyle='--')
-    axs[1].plot(results.theta_star, results.test_metric, label='On test set')
-    axs[1].set_xlabel(r'$\theta^*$')
-    axs[1].set_ylabel(ylabel)
-    axs[1].set_xlim(xlim2[0], xlim2[1])
-    axs[1].set_ylim(ylim[0], ylim[1])
-    axs[1].legend()
-    axs[1].grid()
+    plt.xlabel(line['x_axis_name'])
+    plt.ylabel(metric)
+    plt.xlim(xlim[0], xlim[1])
+    plt.ylim(ylim[0], ylim[1])
+    plt.legend()
+    plt.grid()
 
     plt.tight_layout()
-    if title:
+    if len(title)>0:
         plt.title(title, loc = 'center')
     plt.show()
-
 
 
 
@@ -148,4 +135,121 @@ def show_cifar10(t: torch.Tensor, title=None):
     plt.imshow(img)
     if title: plt.title(title)
     plt.axis("off")
+    plt.show()
+
+
+
+def plot_all_metrics(train_set, test_set,
+                     delta, color_map, title='',
+                     ylim1=[0,1], ylim2=[0,1]):
+    
+    label_map = {
+        'standard': '0/1 risk',
+        'FP': 'FPP',
+        'FN': 'FNP',
+        'FPR': 'FPR',
+        'FNR': 'FNR',
+    }
+
+    # Create subplots
+    fig, axes = plt.subplots(1, 2, figsize=(16, 6))  # 1 row, 2 columns
+
+    # ----- First subplot -----
+    ax = axes[0]
+    for metric in ['standard', 'FP', 'FN', 'FPR', 'FNR']:
+        color = color_map[metric]
+        
+        thetas, bounds = bound_evo_w_theta(metric, train_set, delta, steps=50)
+        ax.plot(thetas, bounds, color=color, label=label_map[metric] + ' bound', linewidth=2)
+
+        emp_metrics = []
+        for theta in thetas:
+            try:
+                selected_set = test_set.loc[test_set.kappa >= theta].copy()
+                emp_metrics.append(emp_metric(selected_set, metric=metric))
+            except ValueError:
+                emp_metrics.append(np.nan)
+
+        ax.plot(thetas, emp_metrics, linestyle='--', color=color, label='Test ' + label_map[metric], linewidth=2)
+
+    ax.set_xlim(min(thetas), max(thetas))
+    ax.set_ylim(ylim1[0], ylim1[1])
+    ax.set_xlabel(r'$\theta$')
+    ax.set_ylabel('Metric')
+    ax.legend()
+    ax.grid(True, which='both', linestyle='--', linewidth=0.5, alpha=0.7)
+
+    # ----- Second subplot -----
+    ax = axes[1]
+    for metric in ['PPV', 'SE', 'SP']:
+        color = color_map[metric]
+        
+        thetas, bounds = bound_evo_w_theta(metric, train_set, delta, steps=50)
+        ax.plot(thetas, bounds, color=color, label=metric + ' bound', linewidth=2)
+
+        emp_metrics = []
+        for theta in thetas:
+            try:
+                selected_set = test_set.loc[test_set.kappa >= theta].copy()
+                emp_metrics.append(emp_metric(selected_set, metric=metric))
+            except ValueError:
+                emp_metrics.append(np.nan)
+
+        ax.plot(thetas, emp_metrics, linestyle='--', color=color, label='Test ' + metric, linewidth=2)
+
+    ax.set_xlim(min(thetas), max(thetas))
+    ax.set_ylim(ylim2[0], ylim2[1])
+    ax.set_xlabel(r'$\theta$')
+    ax.legend()
+    ax.grid(True, which='both', linestyle='--', linewidth=0.5, alpha=0.7)
+
+    plt.tight_layout()
+    if len(title)>0:
+        plt.title(title)
+    plt.show()
+
+
+
+def two_metrics_bounds(metric1, metric2, all_bounds_SR, all_bounds_MCD, num_labels = 15):
+
+    #### SR ####
+    x1 = all_bounds_SR[metric1]
+    y1 = all_bounds_SR[metric2]
+    labels = list(zip(all_bounds_SR['thetas'], all_bounds_SR['coverages']))
+    plt.scatter(x=x1, y=y1, marker='+', label='SR')
+    # Choose evenly spaced indices along the curve
+    indices = np.linspace(0, len(x1) - 1, num=num_labels, dtype=int)
+    for j in indices:
+        label = f'({labels[j][0]:.2f}, {labels[j][1]:.2f})'
+        plt.annotate(label, (x1[j], y1[j]), textcoords="offset points", xytext=(5,5), ha='left', fontsize=8)
+
+    if all_bounds_MCD is not None:
+        #### MCD ####
+        x2 = all_bounds_MCD[metric1]
+        y2 = all_bounds_MCD[metric2]
+        labels = list(zip(all_bounds_MCD['thetas'], all_bounds_MCD['coverages']))
+        plt.scatter(x=x2, y=y2, marker='^', label='MCD', c='y')
+        # Choose evenly spaced indices along the curve
+        indices = np.linspace(0, len(x2) - 1, num=num_labels, dtype=int)
+        for j in indices:
+            label = f'({labels[j][0]:.2f}, {labels[j][1]:.2f})'
+            plt.annotate(label, (x2[j], y2[j]), textcoords="offset points", xytext=(5,5), ha='left', fontsize=8)
+
+    if num_labels>0:
+        # Add a single legend-like text to explain the annotations
+        plt.text(0.02, 0.98, r'Ticks: ($\theta$, coverage)',
+                transform=plt.gca().transAxes,
+                fontsize=9, verticalalignment='top', horizontalalignment='left',
+                bbox=dict(boxstyle="round,pad=0.3", facecolor="white", edgecolor="gray", alpha=0.7))
+    
+    plt.xlabel(metric1 + ' bound')
+    plt.ylabel(metric2 + ' bound')
+    plt.grid()
+    plt.legend()
+    if all_bounds_MCD is not None:
+        plt.xlim(min(min(x1),min(x2))*0.9,1.1*max(max(x1),max(x2)))
+        plt.ylim(min(min(y1),min(y2))*0.9,1.1*max(max(y1),max(y2)))
+    else:
+        plt.xlim(min(x1)*0.9,1.1*max(x1))
+        plt.ylim(min(y1)*0.9,1.1*max(y1))
     plt.show()

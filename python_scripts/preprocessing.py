@@ -65,13 +65,13 @@ def get_balanced_sampler(labels):
 
 
 
-def prepare_sgr_dico(dataloader, model, device, T):
+def prepare_sgp_dico(dataloader, model, device, T):
     """
-    Prepare dataframe containing exactly the required features to train SGR module
+    Prepare dataframe containing exactly the required features to train sgp module
     true class of each sample, model predicted class, 
     softmax response (kappa) or any other confidence function output 
     """
-    sgr_dico = {'y_true' : np.array([]),
+    sgp_dico = {'y_true' : np.array([]),
                 'y_pred' : np.array([]),
                 'kappa' : np.array([])}
     model.eval()
@@ -84,11 +84,11 @@ def prepare_sgr_dico(dataloader, model, device, T):
             _, predicted_classes = torch.max(batch_preds, 1)
             predicted_classes = predicted_classes.cpu().numpy()
 
-            sgr_dico['y_true'] = np.concatenate((sgr_dico['y_true'], labels.cpu().numpy()))
-            sgr_dico['y_pred'] = np.concatenate((sgr_dico['y_pred'], predicted_classes))
-            sgr_dico['kappa'] = np.concatenate((sgr_dico['kappa'], softmax_responses))
+            sgp_dico['y_true'] = np.concatenate((sgp_dico['y_true'], labels.cpu().numpy()))
+            sgp_dico['y_pred'] = np.concatenate((sgp_dico['y_pred'], predicted_classes))
+            sgp_dico['kappa'] = np.concatenate((sgp_dico['kappa'], softmax_responses))
 
-    return sgr_dico
+    return sgp_dico
 
 
 

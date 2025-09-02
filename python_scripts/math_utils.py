@@ -146,7 +146,7 @@ def integers_exp_spacing(start, end, num_points=40):
 
 
 
-def simulate_SGR_dataset(n, high_conf_propor=0.7, seed=42):
+def simulate_sgp_dataset(n, high_conf_propor=0.7, seed=42):
     """
     Simulate a dataset with binary predictions (`y_true`, `y_pred`) and confidence scores (`kappa`).
     The probability of a mistake (`y_true != y_pred`) decreases as kappa increases.
