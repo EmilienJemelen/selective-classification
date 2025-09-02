@@ -295,7 +295,7 @@ def bound_evo_w_theta(metric, Sn, delta, steps=100):
                            'PPV': 'FP', 'SE': 'FN',
                            'SP': 'FP'}
     Sn = Sn.sort_values('kappa', ascending=True)
-    kappas = np.array(Sn.kappa)
+    kappas = sorted(np.array(Sn.kappa))
     bounds, thetas = [], np.linspace(kappas[0], kappas[-1], steps)
 
     for theta in thetas:
