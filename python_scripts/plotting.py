@@ -139,12 +139,16 @@ def show_cifar10(t: torch.Tensor, title=None):
 
 
 
-def plot_all_metrics(train_set, test_set,
-                     delta, color_map, title='',
-                     xlim1=[0,1], xlim2=[0,1],
-                     ylim1=[0,1], ylim2=[0,1],
-                     by_coverage=False):
-    
+def plot_all_metrics(train_set: pd.DataFrame, 
+                     test_set: pd.DataFrame,
+                     delta: float, 
+                     color_map: dict, 
+                     title: str = '',
+                     xlim1: list = [0, 1], xlim2: list = [0, 1],
+                     ylim1: list = [0, 1], ylim2: list = [0, 1],
+                     by_coverage: bool = False,
+                     metrics: list = ['standard', 'FP', 'FN', 'FPR', 'FNR', 'PPV', 'SE', 'SP']):
+
     label_map = {
         'standard': '0/1 risk',
         'FP': 'FPP',
@@ -153,101 +157,66 @@ def plot_all_metrics(train_set, test_set,
         'FNR': 'FNR',
     }
 
+    def plot_metrics_on_ax(ax, metrics_subset, xlim, ylim, label_getter):
+        last_thetas = None
+        for metric in metrics_subset:
+            color = color_map[metric]
+            thetas, bounds = bound_evo_w_theta(metric, train_set, delta, steps=50)
+            last_thetas = thetas
+
+            # Training bound
+            if by_coverage:
+                train_coverages = [
+                    train_set.loc[train_set.kappa >= theta].shape[0] / train_set.shape[0]
+                    for theta in thetas
+                ]
+                idx = np.argsort(train_coverages)
+                x_train, y_train = np.array(train_coverages)[idx], np.array(bounds)[idx]
+            else:
+                x_train, y_train = thetas, bounds
+            ax.plot(x_train, y_train, color=color, label=label_getter(metric) + ' bound', linewidth=2)
+
+            # Test empirical metric
+            emp_metrics, test_coverages = [], []
+            for theta in thetas:
+                selected_set = test_set.loc[test_set.kappa >= theta].copy()
+                test_coverages.append(selected_set.shape[0] / test_set.shape[0])
+                try:
+                    emp_metrics.append(emp_metric(selected_set, metric=metric))
+                except ValueError:
+                    emp_metrics.append(np.nan)
+
+            if by_coverage:
+                idx = np.argsort(test_coverages)
+                x_test, y_test = np.array(test_coverages)[idx], np.array(emp_metrics)[idx]
+            else:
+                x_test, y_test = thetas, emp_metrics
+            ax.plot(x_test, y_test, linestyle='--', color=color, label='Test ' + label_getter(metric), linewidth=2)
+
+        if by_coverage:
+            ax.set_xlim(xlim[0], xlim[1])
+            ax.set_xlabel('Coverage')
+        else:
+            ax.set_xlim(min(last_thetas), max(last_thetas))
+            ax.set_xlabel(r'$\theta$')
+        ax.set_ylim(ylim[0], ylim[1])
+        ax.set_ylabel('Metric value')
+        ax.legend()
+        ax.grid(True, which='both', linestyle='--', linewidth=0.5, alpha=0.7)
+
     # Create subplots
-    fig, axes = plt.subplots(1, 2, figsize=(16, 6))  # 1 row, 2 columns
+    fig, axes = plt.subplots(1, 2, figsize=(16, 6))
 
-    # ----- First subplot -----
-    ax = axes[0]
-    for metric in ['standard', 'FP', 'FN', 'FPR', 'FNR']:
-        color = color_map[metric]
-        thetas, bounds = bound_evo_w_theta(metric, train_set, delta, steps=50)
-        
-        if by_coverage:
-            train_coverages = []
-            for theta in thetas:
-                selected_set = train_set.loc[train_set.kappa >= theta].copy()
-                train_coverages.append(selected_set.shape[0]/train_set.shape[0])
-            idx = np.argsort(train_coverages)
-            train_coverages, bounds = np.array(train_coverages)[idx], np.array(bounds)[idx]
-            ax.plot(train_coverages, bounds, color=color, label=label_map[metric] + ' bound', linewidth=2)
-        else:
-            ax.plot(thetas, bounds, color=color, label=label_map[metric] + ' bound', linewidth=2)
+    left_group = [m for m in metrics if m in ['standard', 'FP', 'FN', 'FPR', 'FNR']]
+    right_group = [m for m in metrics if m in ['PPV', 'SE', 'SP']]
 
-        emp_metrics = []
-        test_coverages = []
-        for theta in thetas:
-            selected_set = test_set.loc[test_set.kappa >= theta].copy()
-            test_coverages.append(selected_set.shape[0]/test_set.shape[0])
-            try:
-                emp_metrics.append(emp_metric(selected_set, metric=metric))
-            except ValueError:
-                emp_metrics.append(np.nan)
-
-        if by_coverage:
-            idx = np.argsort(test_coverages)
-            test_coverages, emp_metrics = np.array(test_coverages)[idx], np.array(emp_metrics)[idx]
-            ax.plot(test_coverages, emp_metrics, linestyle='--', color=color, label='Test ' + label_map[metric], linewidth=2)
-        else:
-            ax.plot(thetas, emp_metrics, linestyle='--', color=color, label='Test ' + label_map[metric], linewidth=2)
-
-    
-    if by_coverage:
-        ax.set_xlim(xlim1[0], xlim1[1])
-        ax.set_xlabel('Coverage')
-    else:
-        ax.set_xlim(min(thetas), max(thetas))
-        ax.set_xlabel(r'$\theta$')
-    ax.set_ylim(ylim1[0], ylim1[1])
-    ax.set_ylabel('Metric value')
-    ax.legend()
-    ax.grid(True, which='both', linestyle='--', linewidth=0.5, alpha=0.7)
-
-    # ----- Second subplot -----
-    ax = axes[1]
-    for metric in ['PPV','SE','SP']:
-        color = color_map[metric]
-        thetas, bounds = bound_evo_w_theta(metric, train_set, delta, steps=50)
-        
-        if by_coverage:
-            train_coverages = []
-            for theta in thetas:
-                selected_set = train_set.loc[train_set.kappa >= theta].copy()
-                train_coverages.append(selected_set.shape[0]/train_set.shape[0])
-            idx = np.argsort(train_coverages)
-            train_coverages, bounds = np.array(train_coverages)[idx], np.array(bounds)[idx]
-            ax.plot(train_coverages, bounds, color=color, label=metric + ' bound', linewidth=2)
-        else:
-            ax.plot(thetas, bounds, color=color, label=metric + ' bound', linewidth=2)
-
-        emp_metrics = []
-        test_coverages = []
-        for theta in thetas:
-            selected_set = test_set.loc[test_set.kappa >= theta].copy()
-            test_coverages.append(selected_set.shape[0]/test_set.shape[0])
-            try:
-                emp_metrics.append(emp_metric(selected_set, metric=metric))
-            except ValueError:
-                emp_metrics.append(np.nan)
-
-        if by_coverage:
-            idx = np.argsort(test_coverages)
-            test_coverages, emp_metrics = np.array(test_coverages)[idx], np.array(emp_metrics)[idx]
-            ax.plot(test_coverages, emp_metrics, linestyle='--', color=color, label='Test ' + metric, linewidth=2)
-        else:
-            ax.plot(thetas, emp_metrics, linestyle='--', color=color, label='Test ' + metric, linewidth=2)
-
-    if by_coverage:
-        ax.set_xlim(xlim2[0], xlim2[1])
-        ax.set_xlabel('Coverage')
-    else:
-        ax.set_xlim(min(thetas), max(thetas))
-        ax.set_xlabel(r'$\theta$')
-    ax.set_ylim(ylim2[0], ylim2[1])
-    ax.legend()
-    ax.grid(True, which='both', linestyle='--', linewidth=0.5, alpha=0.7)
+    if left_group:
+        plot_metrics_on_ax(axes[0], left_group, xlim1, ylim1, lambda m: label_map[m])
+    if right_group:
+        plot_metrics_on_ax(axes[1], right_group, xlim2, ylim2, lambda m: m)
 
     plt.tight_layout()
-    if len(title)>0:
+    if len(title) > 0:
         plt.title(title)
     plt.show()
 
