@@ -141,7 +141,9 @@ def show_cifar10(t: torch.Tensor, title=None):
 
 def plot_all_metrics(train_set, test_set,
                      delta, color_map, title='',
-                     ylim1=[0,1], ylim2=[0,1]):
+                     xlim1=[0,1], xlim2=[0,1],
+                     ylim1=[0,1], ylim2=[0,1],
+                     by_coverage=False):
     
     label_map = {
         'standard': '0/1 risk',
@@ -158,48 +160,89 @@ def plot_all_metrics(train_set, test_set,
     ax = axes[0]
     for metric in ['standard', 'FP', 'FN', 'FPR', 'FNR']:
         color = color_map[metric]
-        
         thetas, bounds = bound_evo_w_theta(metric, train_set, delta, steps=50)
-        ax.plot(thetas, bounds, color=color, label=label_map[metric] + ' bound', linewidth=2)
+        
+        if by_coverage:
+            train_coverages = []
+            for theta in thetas:
+                selected_set = train_set.loc[train_set.kappa >= theta].copy()
+                train_coverages.append(selected_set.shape[0]/train_set.shape[0])
+            idx = np.argsort(train_coverages)
+            train_coverages, bounds = np.array(train_coverages)[idx], np.array(bounds)[idx]
+            ax.plot(train_coverages, bounds, color=color, label=label_map[metric] + ' bound', linewidth=2)
+        else:
+            ax.plot(thetas, bounds, color=color, label=label_map[metric] + ' bound', linewidth=2)
 
         emp_metrics = []
+        test_coverages = []
         for theta in thetas:
+            selected_set = test_set.loc[test_set.kappa >= theta].copy()
+            test_coverages.append(selected_set.shape[0]/test_set.shape[0])
             try:
-                selected_set = test_set.loc[test_set.kappa >= theta].copy()
                 emp_metrics.append(emp_metric(selected_set, metric=metric))
             except ValueError:
                 emp_metrics.append(np.nan)
 
-        ax.plot(thetas, emp_metrics, linestyle='--', color=color, label='Test ' + label_map[metric], linewidth=2)
+        if by_coverage:
+            idx = np.argsort(test_coverages)
+            test_coverages, emp_metrics = np.array(test_coverages)[idx], np.array(emp_metrics)[idx]
+            ax.plot(test_coverages, emp_metrics, linestyle='--', color=color, label='Test ' + label_map[metric], linewidth=2)
+        else:
+            ax.plot(thetas, emp_metrics, linestyle='--', color=color, label='Test ' + label_map[metric], linewidth=2)
 
-    ax.set_xlim(min(thetas), max(thetas))
+    
+    if by_coverage:
+        ax.set_xlim(xlim1[0], xlim1[1])
+        ax.set_xlabel('Coverage')
+    else:
+        ax.set_xlim(min(thetas), max(thetas))
+        ax.set_xlabel(r'$\theta$')
     ax.set_ylim(ylim1[0], ylim1[1])
-    ax.set_xlabel(r'$\theta$')
-    ax.set_ylabel('Metric')
+    ax.set_ylabel('Metric value')
     ax.legend()
     ax.grid(True, which='both', linestyle='--', linewidth=0.5, alpha=0.7)
 
     # ----- Second subplot -----
     ax = axes[1]
-    for metric in ['PPV', 'SE', 'SP']:
+    for metric in ['PPV','SE','SP']:
         color = color_map[metric]
-        
         thetas, bounds = bound_evo_w_theta(metric, train_set, delta, steps=50)
-        ax.plot(thetas, bounds, color=color, label=metric + ' bound', linewidth=2)
+        
+        if by_coverage:
+            train_coverages = []
+            for theta in thetas:
+                selected_set = train_set.loc[train_set.kappa >= theta].copy()
+                train_coverages.append(selected_set.shape[0]/train_set.shape[0])
+            idx = np.argsort(train_coverages)
+            train_coverages, bounds = np.array(train_coverages)[idx], np.array(bounds)[idx]
+            ax.plot(train_coverages, bounds, color=color, label=metric + ' bound', linewidth=2)
+        else:
+            ax.plot(thetas, bounds, color=color, label=metric + ' bound', linewidth=2)
 
         emp_metrics = []
+        test_coverages = []
         for theta in thetas:
+            selected_set = test_set.loc[test_set.kappa >= theta].copy()
+            test_coverages.append(selected_set.shape[0]/test_set.shape[0])
             try:
-                selected_set = test_set.loc[test_set.kappa >= theta].copy()
                 emp_metrics.append(emp_metric(selected_set, metric=metric))
             except ValueError:
                 emp_metrics.append(np.nan)
 
-        ax.plot(thetas, emp_metrics, linestyle='--', color=color, label='Test ' + metric, linewidth=2)
+        if by_coverage:
+            idx = np.argsort(test_coverages)
+            test_coverages, emp_metrics = np.array(test_coverages)[idx], np.array(emp_metrics)[idx]
+            ax.plot(test_coverages, emp_metrics, linestyle='--', color=color, label='Test ' + metric, linewidth=2)
+        else:
+            ax.plot(thetas, emp_metrics, linestyle='--', color=color, label='Test ' + metric, linewidth=2)
 
-    ax.set_xlim(min(thetas), max(thetas))
+    if by_coverage:
+        ax.set_xlim(xlim2[0], xlim2[1])
+        ax.set_xlabel('Coverage')
+    else:
+        ax.set_xlim(min(thetas), max(thetas))
+        ax.set_xlabel(r'$\theta$')
     ax.set_ylim(ylim2[0], ylim2[1])
-    ax.set_xlabel(r'$\theta$')
     ax.legend()
     ax.grid(True, which='both', linestyle='--', linewidth=0.5, alpha=0.7)
 
