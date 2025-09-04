@@ -222,7 +222,8 @@ def plot_all_metrics(train_set: pd.DataFrame,
 
 
 
-def two_metrics_bounds(metric1, metric2, all_bounds_SR, all_bounds_MCD, num_labels = 15):
+def two_metrics_bounds(metric1, metric2, all_bounds_SR, all_bounds_MCD, num_labels = 15,
+                       xlim=None, ylim=None):
 
     #### SR ####
     x1 = all_bounds_SR[metric1]
@@ -258,10 +259,19 @@ def two_metrics_bounds(metric1, metric2, all_bounds_SR, all_bounds_MCD, num_labe
     plt.ylabel(metric2 + ' bound')
     plt.grid()
     plt.legend()
-    if all_bounds_MCD is not None:
-        plt.xlim(min(min(x1),min(x2))*0.9,1.1*max(max(x1),max(x2)))
-        plt.ylim(min(min(y1),min(y2))*0.9,1.1*max(max(y1),max(y2)))
+    if xlim is not None:
+        plt.xlim(xlim[0],xlim[1])
     else:
-        plt.xlim(min(x1)*0.9,1.1*max(x1))
-        plt.ylim(min(y1)*0.9,1.1*max(y1))
+        if all_bounds_MCD is not None:
+            plt.xlim(min(min(x1),min(x2))*0.9,1.1*max(max(x1),max(x2)))
+        else:
+            plt.xlim(min(x1)*0.9,1.1*max(x1))
+    if ylim is not None:
+        plt.ylim(ylim[0],ylim[1])
+    else:
+        if all_bounds_MCD is not None:
+            plt.ylim(min(min(y1),min(y2))*0.9,1.1*max(max(y1),max(y2)))
+        else:
+            plt.ylim(min(y1)*0.9,1.1*max(y1))
+
     plt.show()
