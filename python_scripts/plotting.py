@@ -17,13 +17,34 @@ from python_scripts.sgp_utils import *
 warnings.filterwarnings("ignore", category=MatplotlibDeprecationWarning)
 
 
-
 def metric_plots(all_results:dict, 
                  metric: str,
                  lines_list:list,
                  xlim: list = [0, 1],
                  ylim : list = [0, 1],
                  title : str =  ''):
+    
+    """
+    Plot one or more metric curves from experiment results.
+
+    Args:
+        all_results (dict): Nested results dictionary indexed by keys in `lines_list`.
+        metric (str): Name of the metric to display on the y-axis.
+        lines_list (list): List of dicts, each describing a line with keys:
+            - 'kappa': chosen confidence function (Softmax Response/SR or Monte Carlo Dropout minus variance/MCD)
+            - 'x_axis': column for the x-axis.
+            - 'colname': column for the y-axis.
+            - 'name': label for the legend.
+            - 'colour': line color.
+            - 'style': line style.
+            - 'x_axis_name': label for x-axis.
+        xlim (list, optional): Limits for the x-axis. Default [0, 1].
+        ylim (list, optional): Limits for the y-axis. Default [0, 1].
+        title (str, optional): Title for the plot. Default ''.
+
+    Returns:
+        None. Displays the plot.
+    """
 
     for line in lines_list:
         kappa, x_axis, colname, name, c, style = line['kappa'], line['x_axis'], line['colname'], line['name'], line['colour'], line['style']
@@ -42,12 +63,37 @@ def metric_plots(all_results:dict,
     plt.show()
 
 
-
 def metric_plots_with_imbalance(all_propor_dfs, proportions,
                                 ylabel: str, ylim: list = [0, 1],
                                 xlim1: list = [0, 1], xlim2: list = [0, 1],
                                 title : str= None,
                                 show_left_legend=False):
+    
+    """
+    Plot metric curves under varying class imbalance conditions.
+
+    Produces two side-by-side plots:
+      - Coverage vs metric.
+      - θ* vs metric.
+    Curves are drawn for each specified imbalance proportion, with color 
+    intensity indicating imbalance level.
+
+    Args:
+        all_propor_dfs (pd.DataFrame): Data with columns
+            ['proportion_1', 'test_coverage', 'metric_bound', 
+             'test_metric', 'theta_star'].
+        proportions (list): Proportion values of the positive class to plot.
+        ylabel (str): Y-axis label (metric name).
+        ylim (list, optional): Y-axis limits. Default [0, 1].
+        xlim1 (list, optional): X-axis limits for coverage plot. Default [0, 1].
+        xlim2 (list, optional): X-axis limits for θ* plot. Default [0, 1].
+        title (str, optional): Title for the figure. Default None.
+        show_left_legend (bool, optional): Whether to show legend and colorbar 
+            in the left subplot. Default False.
+
+    Returns:
+        None. Displays the plots.
+    """
     
     # Set up colormaps
     cmap_blue = cm.get_cmap('Blues')
@@ -108,7 +154,6 @@ def metric_plots_with_imbalance(all_propor_dfs, proportions,
     plt.show()
 
 
-
 def show_cifar10(t: torch.Tensor, title=None):
     """
     Display a CIFAR-10 tensor image (normalized with CIFAR-10 stats).
@@ -138,7 +183,6 @@ def show_cifar10(t: torch.Tensor, title=None):
     plt.show()
 
 
-
 def plot_all_metrics(train_set: pd.DataFrame, 
                      test_set: pd.DataFrame,
                      delta: float, 
@@ -148,11 +192,33 @@ def plot_all_metrics(train_set: pd.DataFrame,
                      ylim1: list = [0, 1], ylim2: list = [0, 1],
                      by_coverage: bool = False,
                      metrics: list = ['standard', 'FP', 'FN', 'FPR', 'FNR', 'PPV', 'SE', 'SP']):
+    
+    """
+    Plot training bounds and test metrics across thresholds or coverages.
+
+    Produces two subplots: one for 0/1 risk, FP, FN, FPR, FNR 
+    and one for PPV, SE, SP (they're usually on same scale). Each metric is shown with its 
+    theoretical bound (from training) and empirical performance (on test data).
+
+    Args:
+        train_set (pd.DataFrame): Training set with confidence/threshold scores.
+        test_set (pd.DataFrame): Test set with labels and predictions.
+        delta (float): Confidence level for bound computation.
+        color_map (dict): Mapping from metric names to colors.
+        title (str, optional): Figure title. Default ''.
+        xlim1, xlim2 (list, optional): X-axis limits for left/right subplot.
+        ylim1, ylim2 (list, optional): Y-axis limits for left/right subplot.
+        by_coverage (bool, optional): If True, use coverage as x-axis instead of θ.
+        metrics (list, optional): Metrics to plot. Default includes common risks and rates.
+
+    Returns:
+        None. Displays the plots.
+    """
 
     label_map = {
         'standard': '0/1 risk',
-        'FP': 'FPP',
-        'FN': 'FNP',
+        'FP': 'FP risk',
+        'FN': 'FN risk',
         'FPR': 'FPR',
         'FNR': 'FNR',
     }
@@ -221,9 +287,29 @@ def plot_all_metrics(train_set: pd.DataFrame,
     plt.show()
 
 
-
 def two_metrics_bounds(metric1, metric2, all_bounds_SR, all_bounds_MCD, num_labels = 15,
                        xlim=None, ylim=None):
+    
+    """
+    Compare two metric bounds (e.g., SR vs MCD) on a scatter plot.
+
+    Plots the relationship between `metric1` and `metric2` bounds from SR 
+    (and optionally MCD), with annotated points showing (θ, coverage) values.
+
+    Args:
+        metric1 (str): Name of the first metric.
+        metric2 (str): Name of the second metric.
+        all_bounds_SR (dict): Bounds dictionary for SR, must include keys 
+            [metric1, metric2, 'thetas', 'coverages'].
+        all_bounds_MCD (dict or None): Bounds dictionary for MCD, same format 
+            as SR. If None, only SR is plotted.
+        num_labels (int, optional): Number of annotated points. Default 15.
+        xlim (list, optional): x-axis limits. Auto-scaled if None.
+        ylim (list, optional): y-axis limits. Auto-scaled if None.
+
+    Returns:
+        None. Displays the plot.
+    """
 
     #### SR ####
     x1 = all_bounds_SR[metric1]

@@ -21,7 +21,6 @@ import pickle
 import torch.optim.lr_scheduler as lr_scheduler
 
 
-
 @torch.no_grad()
 def mc_var_for_deployed_class(model, loader, device, T=30):
     """
@@ -73,8 +72,22 @@ def mc_var_for_deployed_class(model, loader, device, T=30):
     return y_pred_det, mean_prob_detcls, var_prob_detcls
 
 
-
 def selective_accuracy(conf, y_hat, y_true, coverages=np.linspace(0.1, 1.0, 10)):
+    """
+    Compute accuracy at different coverage levels.
+
+    Predictions are sorted by descending confidence, and accuracy is measured
+    on the top fraction of samples defined by each coverage value.
+
+    Args:
+        conf (torch.Tensor): Confidence scores, shape (N,).
+        y_hat (torch.Tensor): Predicted labels, shape (N,).
+        y_true (torch.Tensor): True labels, shape (N,).
+        coverages (array-like, optional): Fractions of data to keep (default: 0.1–1.0).
+
+    Returns:
+        (np.ndarray, np.ndarray): Coverages and corresponding accuracies.
+    """
     order = torch.argsort(conf, descending=True)
     conf, y_hat, y_true = conf[order], y_hat[order], y_true[order]
     N = len(y_true)

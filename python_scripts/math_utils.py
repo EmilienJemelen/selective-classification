@@ -25,7 +25,6 @@ from pathlib import Path
 from collections import Counter
 
 
-
 def sotfmax(x):
     """
     x a vector of floats, returns softmaxes for these points
@@ -33,10 +32,27 @@ def sotfmax(x):
     return np.exp(x)/np.exp(x).sum()
 
 
-
 def binomial_log(n, j):
-    return gammaln(n + 1) - gammaln(j + 1) - gammaln(n - j + 1)
+    """
+    Return the log of the binomial coefficient "n choose j".
 
+    Computed as:
+        log(n! / (j! * (n - j)!)) 
+      = gammaln(n + 1) - gammaln(j + 1) - gammaln(n - j + 1)
+
+    Parameters
+    ----------
+    n : int
+        Total number of trials.
+    j : int
+        Number of successes.
+
+    Returns
+    -------
+    float
+        Logarithm of the binomial coefficient.
+    """
+    return gammaln(n + 1) - gammaln(j + 1) - gammaln(n - j + 1)
 
 
 def binom_sum(b,e,n):
@@ -59,11 +75,10 @@ def binom_sum(b,e,n):
         raise ValueError
     
 
-
 def B_star(delta, e, n, eps=1e-6, b1=0, b2=1):
     """
-    b_star recursive computation by dichotomy search over [0,1], given probability delta
-    approximate solution at eps (in terms of FUN images)
+    b_star iterative computation by dichotomy search (Algorithm 1 in the paper) given probability delta
+    approximate solution up to eps
     """
     if (e==n) or (n==0):
         return 1
@@ -78,7 +93,6 @@ def B_star(delta, e, n, eps=1e-6, b1=0, b2=1):
     else:
         return B_star(delta, e, n, b1=b, b2=b2)
     
-
 
 def integers_log_spacing(start, end, num_points = 40):
     """
@@ -95,22 +109,17 @@ def integers_log_spacing(start, end, num_points = 40):
     """
     if start >= end:
         raise ValueError("Start must be less than end.")
-
     # Generate a range from 0 (dense) to 1 (sparse)
     lin = np.linspace(0, 1, num_points)
-
     # Apply inverse exponential shape (log-bias toward the start)
     log_bias = 1 - (1 - lin)**4  # This compresses more values at the start
-
     # Scale to range
     values = start + (end - start) * log_bias
     values = np.round(values).astype(int)
-
     # Remove duplicates
     values = np.unique(np.clip(values, start, end))
 
     return values.tolist()
-
 
 
 def integers_exp_spacing(start, end, num_points=40):
@@ -128,22 +137,17 @@ def integers_exp_spacing(start, end, num_points=40):
     """
     if start >= end:
         raise ValueError("Start must be less than end.")
-
     # Generate a range of indices from 0 to 1
     lin = np.linspace(0, 1, num_points)
-
     # Exponential bias toward 1 (end of the range)
     exp_bias = lin**4  # Tune the exponent for more/less bias
-
     # Scale to actual range
     values = start + (end - start) * exp_bias
     values = np.round(values).astype(int)
-
     # Remove duplicates
     values = np.unique(np.clip(values, start, end))
 
     return values.tolist()
-
 
 
 def simulate_sgp_dataset(n, high_conf_propor=0.7, seed=42):
@@ -195,5 +199,3 @@ def simulate_sgp_dataset(n, high_conf_propor=0.7, seed=42):
     })
 
     return df
-
-

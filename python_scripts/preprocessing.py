@@ -27,14 +27,12 @@ from datetime import datetime
 from sklearn.utils import resample
 
 
-
 def filter_classes(dataset, allowed_classes):
     """
     Function to filter CIFAR dataset by class labels
     """
     indices = [i for i, (_, label) in enumerate(dataset) if label in allowed_classes]
     return Subset(dataset, indices)
-
 
 
 def binarize_labels(dataset):
@@ -44,13 +42,11 @@ def binarize_labels(dataset):
     dataset.targets = [1 if label == 0 else 0 for label in dataset.targets]
 
 
-
 def get_subset_labels(subset, combined_dataset):
     """
     Extract labels for the subsets (needed for sampling)
     """
     return [combined_dataset[idx][1] for idx in subset.indices]
-
 
 
 def get_balanced_sampler(labels):
@@ -62,7 +58,6 @@ def get_balanced_sampler(labels):
     sample_weights = [weights[label] for label in labels]
     sampler = WeightedRandomSampler(sample_weights, num_samples=len(sample_weights), replacement=True)
     return sampler
-
 
 
 def prepare_sgp_dico(dataloader, model, device, T):
@@ -89,7 +84,6 @@ def prepare_sgp_dico(dataloader, model, device, T):
             sgp_dico['kappa'] = np.concatenate((sgp_dico['kappa'], softmax_responses))
 
     return sgp_dico
-
 
 
 def generate_imbalanced_datasets(dataset, proportions, label_col='y_true', seed=0):
@@ -145,7 +139,6 @@ def generate_imbalanced_datasets(dataset, proportions, label_col='y_true', seed=
     return datasets
 
 
-
 def compute_mean_std(dataset_root):
     """
     Compute the mean and standard deviation of an image dataset for normalization purposes.
@@ -178,7 +171,6 @@ def compute_mean_std(dataset_root):
     mean /= nb_samples
     std /= nb_samples
     return mean, std
-
 
 
 def split_and_balance_dataset(root, transform=None, seed=0, train_size=0.4, val_size=0.1):
@@ -247,7 +239,6 @@ def split_and_balance_dataset(root, transform=None, seed=0, train_size=0.4, val_
     )
 
 
-
 def count_labels(dataset):
     """
     Count the number of samples for each label (0 and 1) in a dataset.
@@ -270,7 +261,6 @@ def count_labels(dataset):
     return {label: counts.get(label, 0) for label in range(2)}
 
 
-
 def interval_intersection(intervals):
     """
     Given a list of intervals [(start1, end1), (start2, end2), ...],
@@ -281,7 +271,6 @@ def interval_intersection(intervals):
     if start < end:
         return (start, end)
     return None  # No overlap
-
 
 
 def compute_all_interval_intersections(interval_dict):
@@ -302,8 +291,16 @@ def compute_all_interval_intersections(interval_dict):
     return intersections
 
 
-
 def best_theta(intersection_intervals):
+    """
+    Return the smallest theta value from a list of intervals.
+
+    Args:
+        intersection_intervals (list of tuple): Intervals of the form (theta, ...).
+
+    Returns:
+        float: The minimum theta found, or np.inf if input is invalid/empty.
+    """
     l=0
     m = np.inf
     try:
@@ -314,7 +311,6 @@ def best_theta(intersection_intervals):
     except TypeError:
         pass
     return m
-
 
 
 def get_segments(x, condition_mask):
@@ -343,5 +339,3 @@ def get_segments(x, condition_mask):
     if in_segment:
         segments.append((start, x[-1]))
     return segments
-
-

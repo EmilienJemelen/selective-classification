@@ -24,13 +24,20 @@ from scipy.special import gammaln
 from collections import defaultdict
 from pathlib import Path
 from collections import Counter
-
 from python_scripts.math_utils import *
 from python_scripts.preprocessing import *
 
 
-
 def emp_errs_count(samples, loss = 'standard'):
+    """Count empirical errors in `samples` for the given loss ('standard', 'FP', 'FN').
+
+    Args:
+        samples (pd.DataFrame): Must contain boolean/int columns `y_pred`, `y_true`.
+        loss (str): Error type to count.
+
+    Returns:
+        int: Number of errors.
+    """
     if loss == 'standard':
         return (samples.y_pred != samples.y_true).sum()
     elif loss == 'FP':
@@ -41,8 +48,21 @@ def emp_errs_count(samples, loss = 'standard'):
         raise ValueError("metric must be either 'standard', 'FP' or 'FN'")
     
 
-
 def emp_metric(samples, metric = 'standard'):
+    """Compute an empirical classification metric on `samples`.
+
+    Supports: 'standard', 'FP', 'FN', 'FPR', 'FNR', 'PPV', 'SE', 'SP'.
+
+    Args:
+        samples (pd.DataFrame): Must contain `y_pred`, `y_true`.
+        metric (str): Metric name.
+
+    Returns:
+        float: Metric value.
+
+    Raises:
+        ValueError: If dataset is empty or metric is unknown.
+    """
     if samples.shape[0] == 0:
         raise ValueError('no sample in dataset')
     if metric == 'standard':
@@ -65,10 +85,19 @@ def emp_metric(samples, metric = 'standard'):
         raise ValueError("metric must be in 'standard', 'FP','FN','FPR','FNR','PPV','SE','SP'")
 
 
-
 def upper_bound_denominator(metric, selected_samples, delta, m):
-    """
-    denominator of upper bound for metrics FPR, FNR, VPP, SE, SP
+    """Denominator term for upper bounds of ratio metrics.
+
+    Applies to: FPR, FNR, PPV, SE, SP.
+
+    Args:
+        metric (str): Metric name.
+        selected_samples (pd.DataFrame): Selected subset with `y_pred`, `y_true`.
+        delta (float): Confidence level.
+        m (int): Total sample size.
+
+    Returns:
+        float: Denominator value.
     """
     d2 = np.sqrt(-m*np.log(delta/2))/selected_samples.shape[0]
     if (metric == 'PPV'):
@@ -82,8 +111,19 @@ def upper_bound_denominator(metric, selected_samples, delta, m):
         return d1-d2
 
 
-
 def bound(b, selected_samples, delta, metric, m):
+    """Transform risk bound `b` into a metric-specific bound.
+
+    Args:
+        b (float): Base bound B*.
+        selected_samples (pd.DataFrame): Selected subset.
+        delta (float): Confidence level.
+        metric (str): Target metric.
+        m (int): Total sample size.
+
+    Returns:
+        float: Metric bound in (0,1), or NaN if invalid.
+    """
     if metric in ['standard', 'FP', 'FN']:
         B = b
     elif metric in ['FPR', 'FNR']:
@@ -96,65 +136,62 @@ def bound(b, selected_samples, delta, metric, m):
         return B
 
 
-def terminal_condition(selected_errs_count, bound, r_star, metric, tolerance=1e-2):
-    if metric in ['standard', 'FP', 'FN', 'FPR', 'FNR']:
-        return True if ((selected_errs_count == 0) and (bound > r_star + tolerance)) else False
-    elif metric in ['PPV', 'SE', 'SP']:
-        return True if ((selected_errs_count == 0) and (bound < r_star - tolerance)) else False
-    else:
-        raise ValueError('invalid metric')
+def satisfied(bound, r_star, metric):
+    """Check if the target constraint is satisfied for the metric.
 
+    Args:
+        bound (float): Current bound.
+        r_star (float): Target level.
+        metric (str): Metric name.
 
-
-def decrease_theta(bound, r_star, metric):
-    if metric in ['standard', 'FP', 'FN', 'FPR', 'FNR']:
-        return True if bound < r_star else False
-    elif metric in ['PPV', 'SE', 'SP']:
-        return True if bound > r_star else False
-    else:
-        raise ValueError('invalid metric')
-
-
-
-def satisfied(bound, r_star, metric, tolerance):
-    if metric in ['standard', 'FP', 'FN', 'FPR', 'FNR']:
-        return (True if bound < r_star + tolerance else False)
-    else:
-        return (True if bound > r_star - tolerance else False)
-
-
-
-def sgp_dicho(delta, r_star, Sn, k, metric, union=False, tolerance=1e-3):
+    Returns:
+        bool: True if constraint is met.
     """
-    General Selection with Guaranteed Performances (sgp) algorithm
+    if metric in ['standard', 'FP', 'FN', 'FPR', 'FNR']:
+        return (True if bound <= r_star else False)
+    else:
+        return (True if bound >= r_star else False)
+
+
+def sgp_dicho(delta, r_star, Sn, metric, eps=0.001):
+    """Dichotomy search for θ achieving an SGP bound near target r*.
+
+    Args:
+        delta (float): Confidence level.
+        r_star (float): Target metric level.
+        Sn (pd.DataFrame): Training set with `kappa`, `y_pred`, `y_true`.
+        metric (str): Metric name.
+        eps (float): Stopping tolerance.
+
+    Returns:
+        dict: {'theta_star','bound','delta','coverage','emp_metric'} or {} if none.
     """
     
     m = Sn.shape[0]
     zmin = 0
     zmax = m
-    desired_prob = delta/k if union else delta
+    dist = 1
 
-    for i in range(k):
+    while dist > eps:
         
         z = int((zmin+zmax)/2)
         theta = Sn.kappa[z]
         selected_samples = Sn.loc[Sn.kappa >= theta]
         selected_errs_count = emp_errs_count(selected_samples, loss = metric)
-
-        b = B_star(desired_prob, 
+        b = B_star(delta, 
                    selected_errs_count,
                    selected_samples.shape[0])
+        if (selected_samples.shape[0]==0) or (selected_errs_count==selected_samples.shape[0]):
+            b = 1 # by definition of B^*(.) in Proposition 1.
 
-        if (selected_samples.shape[0]==0) or ((selected_errs_count==0) and (b >= r_star)): #terminal condition
+        if (b==1) or ((selected_errs_count==0) and (b >= r_star)) or (zmax-zmin==1): #terminal condition of Algo 1
             return {}
-
-        if b < r_star:
-            zmax = z
         else:
-            zmin = z
-
-    if not satisfied(b, r_star, metric, tolerance):
-        return {}
+            dist = abs(r_star-b)
+            if b < r_star:
+                zmax = z
+            else:
+                zmin = z
 
     return {'theta_star' : theta,
             'bound' : b,
@@ -163,10 +200,18 @@ def sgp_dicho(delta, r_star, Sn, k, metric, union=False, tolerance=1e-3):
             'emp_metric' : emp_metric(selected_samples, metric = metric)}
 
 
-        
-def sgp_greedy_search(delta, r_star, Sn, metric, steps=100, tolerance=1e-3):
-    """
-    Greedy search for LOWEST theta with bound close enough to r* 
+def sgp_greedy_search(delta, r_star, Sn, metric, steps=100):
+    """Greedy scan over θ to find the lowest θ satisfying the target bound.
+
+    Args:
+        delta (float): Confidence level.
+        r_star (float): Target metric level.
+        Sn (pd.DataFrame): Training set with `kappa`, `y_pred`, `y_true`.
+        metric (str): Metric name.
+        steps (int): Number of θ candidates.
+
+    Returns:
+        dict: {'theta_star','bound','delta','coverage','emp_metric'} or {} if none.
     """
     metric_loss_mapping = {'standard': 'standard',
                            'FP':'FP', 'FN':'FN',
@@ -194,6 +239,9 @@ def sgp_greedy_search(delta, r_star, Sn, metric, steps=100, tolerance=1e-3):
         b = B_star(delta, 
                    selected_errs_count,
                    selected_samples.shape[0])    
+        
+        if (selected_samples.shape[0]==0) or (selected_errs_count==selected_samples.shape[0]):
+            b = 1 # by definition of B^*(.) in Proposition 1.
         if b==1:
             return {}
             
@@ -201,7 +249,7 @@ def sgp_greedy_search(delta, r_star, Sn, metric, steps=100, tolerance=1e-3):
         if np.isnan(B):
             return {}
 
-        if satisfied(B, r_star, metric, tolerance):
+        if satisfied(B, r_star, metric):
             return {'theta_star' : theta,
                     'bound' : B,
                     'delta' : delta,
@@ -211,20 +259,31 @@ def sgp_greedy_search(delta, r_star, Sn, metric, steps=100, tolerance=1e-3):
     return {} # if we never found satisfactory B..
 
 
-
-def sgp_at_targets(train_set,test_set, k=None, delta = 0.001, 
+def sgp_at_targets(train_set,test_set, delta = 0.001, 
                    metric_targets = [i/100 for i in range(1,15)], 
-                   metric = 'standard', union=False, 
-                   mode='greedy', steps=100):
-    """
-    Compute sgp metric bound and empirical metric on training and test sets, for different metric targets (r_star)
-    wp of exceeding r_star < delta
+                   metric = 'standard', 
+                   mode='greedy', steps=100,
+                   eps=1e-3):
+    """Run SGP across multiple target levels and report train/test outcomes.
+
+    Args:
+        train_set (pd.DataFrame): Training data with `kappa`, `y_pred`, `y_true`.
+        test_set (pd.DataFrame): Test data with `kappa`, `y_pred`, `y_true`.
+        delta (float): Confidence level.
+        metric_targets (list[float]): Target levels r*.
+        metric (str): Metric name.
+        mode (str): 'greedy' or 'dicho'.
+        steps (int): Greedy θ steps.
+        eps (float): Dichotomy tolerance.
+
+    Returns:
+        pd.DataFrame: One row per target with bounds, θ*, and coverages.
     """
     results = []
     for r_star in metric_targets:
 
         if mode == 'dicho':
-            sgp_dico = sgp_dicho(delta, r_star, train_set, k, metric = metric, union = union)
+            sgp_dico = sgp_dicho(delta, r_star, train_set, metric = metric, eps=eps)
         elif mode == 'greedy':
             sgp_dico = sgp_greedy_search(delta, r_star, train_set, metric, steps=steps)
         else:
@@ -248,25 +307,22 @@ def sgp_at_targets(train_set,test_set, k=None, delta = 0.001,
     return pd.DataFrame(results)
 
 
-
 def sgp_at_targets_on_imbalanced_sets(proportions_of_1, metric_targets, 
                                       sgp_df, delta, mode='dicho',
                                       greedy_search_steps_num=50, metric='standard'):
-    """
-    Run sgp on datasets with varying class-1 proportions.
-
-    Creates imbalanced datasets from `sgp_df`, runs sgp on each, and collects results.
+    """Evaluate SGP at multiple class-1 proportions.
 
     Args:
-        proportions_of_1 (list of float): Target class-1 proportions.
-        metric_targets (dict): Target metric values.
-        sgp_df (pd.DataFrame): Input balanced dataset with 'y_true' and 'kappa' columns.
-        greedy_search_steps_num (int): Number of greedy search steps.
-        delta (float): control proba
-        metric: chosen metric
+        proportions_of_1 (list[float]): Desired positive-class rates.
+        metric_targets (list[float]): Target levels r*.
+        sgp_df (pd.DataFrame): Base dataset with `y_true`, `kappa`.
+        delta (float): Confidence level.
+        mode (str): 'greedy' or 'dicho'.
+        greedy_search_steps_num (int): Greedy steps.
+        metric (str): Metric name.
 
     Returns:
-        pd.DataFrame: Results with class-1 proportions.
+        pd.DataFrame: Results with proportion, bounds, θ*, and metrics.
     """
     all_propor_dfs = pd.DataFrame()
     imbalanced_datasets = generate_imbalanced_datasets(sgp_df, proportions_of_1, seed=0)
@@ -277,7 +333,7 @@ def sgp_at_targets_on_imbalanced_sets(proportions_of_1, metric_targets,
         train_set_ = train_set_.sort_values('kappa', ascending=True).reset_index(drop=True).copy()
         test_set_ = imbalanced_set.iloc[int(imbalanced_set.shape[0]/2):]
 
-        results = sgp_at_targets(train_set_, test_set_, k=int(np.log2(train_set_.shape[0])),
+        results = sgp_at_targets(train_set_, test_set_,
                                 delta=delta, metric_targets=metric_targets, metric=metric,
                                 mode=mode, steps=greedy_search_steps_num)
         results['proportion_1'] = proportion_1
@@ -286,9 +342,18 @@ def sgp_at_targets_on_imbalanced_sets(proportions_of_1, metric_targets,
     return all_propor_dfs
 
 
-
 def bound_evo_w_theta(metric, Sn, delta, steps=100):
+    """Trace the metric bound as a function of θ.
 
+    Args:
+        metric (str): Metric name.
+        Sn (pd.DataFrame): Dataset with `kappa`, `y_pred`, `y_true`.
+        delta (float): Confidence level.
+        steps (int): Number of θ samples.
+
+    Returns:
+        (np.ndarray, list[float]): (thetas, bounds) with NaNs for invalid regions.
+    """
     metric_loss_mapping = {'standard': 'standard',
                            'FP': 'FP', 'FN': 'FN',
                            'FPR': 'FP', 'FNR': 'FN',
@@ -308,6 +373,8 @@ def bound_evo_w_theta(metric, Sn, delta, steps=100):
         b = B_star(delta, 
                    selected_errs_count,
                    selected_samples.shape[0])
+        if (selected_samples.shape[0]==0) or (selected_errs_count==selected_samples.shape[0]):
+            b = 1 # by definition of B^*(.) in Proposition 1.
         if b==1:
             break
         
@@ -322,8 +389,18 @@ def bound_evo_w_theta(metric, Sn, delta, steps=100):
     return thetas, bounds
 
 
-
 def reachable_bounds(metrics_list, Sn, delta, steps=100):
+    """Compute θ/coverage grids and bounds for a list of metrics.
+
+    Args:
+        metrics_list (list[str]): Metrics to evaluate.
+        Sn (pd.DataFrame): Dataset with `kappa`, `y_pred`, `y_true`.
+        delta (float): Confidence level.
+        steps (int): Number of θ samples.
+
+    Returns:
+        dict: {'thetas','coverages', metric->bounds}.
+    """
     res_dico = {}
 
     # thetas and coverages coordinates
@@ -339,9 +416,16 @@ def reachable_bounds(metrics_list, Sn, delta, steps=100):
     return res_dico
 
 
-
 def pos_propor_w_theta(Sn, steps=100):
+    """Compute positive-class proportion among samples selected by θ.
 
+    Args:
+        Sn (pd.DataFrame): Dataset with `kappa`, `y_true`.
+        steps (int): Number of θ samples.
+
+    Returns:
+        (np.ndarray, list[float]): (thetas, positive proportions).
+    """
     Sn = Sn.sort_values('kappa', ascending=True)
     kappas = np.array(Sn.kappa)
     pos_propor, thetas = [], np.linspace(kappas[0], kappas[-1], steps)
@@ -354,16 +438,24 @@ def pos_propor_w_theta(Sn, steps=100):
     return thetas, pos_propor
 
 
-
 def runtime(sim_df, mode:str='dicho', greedy_steps:int=20):
-    """
-    study of time to run dicho search vs greedy search (with different step_num, more steps mean more acute results)
+    """Measure wall-time (seconds) for SGP search mode on `sim_df`.
+
+    Args:
+        sim_df (pd.DataFrame): Simulated Dataset for timing.
+        mode (str): 'dicho' or 'greedy'.
+        greedy_steps (int): Steps for greedy mode.
+
+    Returns:
+        int: Elapsed seconds.
     """
     t0 = datetime.now()
     if mode=='dicho':
-        res = sgp_dicho(delta=1e-3, r_star=0.05, 
-                        Sn=sim_df, k=int(np.log2(sim_df.shape[0])),
-                        metric='standard', union=False)
+        res = sgp_dicho(delta=1e-3, 
+                        r_star=0.05, 
+                        Sn=sim_df,
+                        metric='standard', 
+                        eps=1e-3)
     elif mode=='greedy':
         res = sgp_greedy_search(delta=1e-3, r_star=0.05, Sn=sim_df, 
                                 metric='standard', steps=greedy_steps)
@@ -373,15 +465,19 @@ def runtime(sim_df, mode:str='dicho', greedy_steps:int=20):
     return (t1-t0).seconds
 
 
-
-
 def joint_control(metrics_and_targets, sgp_df, delta, plot=False, steps=100):
+    """Find θ intervals satisfying multiple metric targets (optionally plot).
 
-    """
-    fun to compute g_theta satisfying target bounds for a set of metrics given by the user
-    if plot==True, then the function plots each theta interval satisfying target bound, for each metric in the specified set
-    """
+    Args:
+        metrics_and_targets (dict): {metric: target}.
+        sgp_df (pd.DataFrame): Dataset with `kappa`, `y_pred`, `y_true`.
+        delta (float): Confidence level.
+        plot (bool): If True, plot bounds and feasible θ segments.
+        steps (int): Number of θ samples.
 
+    Returns:
+        dict | None: If not plotting, {'theta_intervals', 'best_theta'}.
+    """
     metric_sign_mapping = {'standard': '<',
                            'FP': '<', 'FN': '<',
                            'FPR': '<', 'FNR': '<',
@@ -438,8 +534,15 @@ def joint_control(metrics_and_targets, sgp_df, delta, plot=False, steps=100):
                 'best_theta' : best_theta(intersected_intervals)}
 
 
-
 def mean_abs_diff(u, v):
+    """Mean absolute difference ignoring NaNs (pairwise).
+
+    Args:
+        u, v (array-like): Sequences to compare.
+
+    Returns:
+        float: Mean |u - v| over valid pairs, or NaN if none.
+    """
     u = np.asarray(u)
     v = np.asarray(v)
     
@@ -454,10 +557,17 @@ def mean_abs_diff(u, v):
     return np.mean(diffs)
 
 
-
 def ABC(ds, metric, steps=30, delta=1e-3):
-    """
-    metric must be in 'standard', 'FP', 'FN', 'FPR', 'FNR'
+    """Compute average absolute gap between bound and test metric vs θ.
+
+    Args:
+        ds (pd.DataFrame): Dataset split in half into train/test.
+        metric (str): One of {'standard','FP','FN','FPR','FNR'}.
+        steps (int): Number of θ samples.
+        delta (float): Confidence level.
+
+    Returns:
+        float: Mean absolute difference between bound and empirical metric.
     """
     train_set = ds.iloc[:int(len(ds)/2)]
     train_set = train_set.sort_values('kappa', ascending=True).reset_index(drop=True).copy()
