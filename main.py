@@ -6,6 +6,9 @@ from models import SimpleCNN, CNN_MCdropout
 from train import train_model, evaluate
 from utils import generate_mc_outputs
 import config
+from dico import dico_layers
+from reproducibility import set_global_seed
+from mc_dropout_utils import accuracy_threshold
 
 def load_data(batch_size):
     transform = transforms.Compose([transforms.ToTensor()])
@@ -18,41 +21,22 @@ def load_data(batch_size):
     return trainloader, testloader, valloader
 
 def main():
+    set_global_seed(42)
     device = config.DEVICE
     save_path = "best_model.pt"
     trainloader, testloader, valloader = load_data(config.BATCH_SIZE)
     
-    # base_model = SimpleCNN().to(device)
-    # if os.path.exists(config.MODEL_PATH):
-    #     print(f"Chargement du modèle depuis {config.MODEL_PATH}")
-    #     base_model.load_state_dict(torch.load(config.MODEL_PATH, map_location=device))
-    # else:
-    #     print("Aucun modèle trouvé. Entraînement en cours...")
-    #     base_model = train_model(base_model, trainloader, valloader, device, config.EPOCHS, config.MODEL_PATH)
-    #     print("Entraînement terminé et modèle sauvegardé.")
-    
-    # val_loss, val_acc = evaluate(base_model, valloader, device)
-    # print(f"Validation Accuracy : {val_acc:.4f} - Loss : {val_loss:.4f}")
-
-    # model = CNN_MCdropout(base_model).to(device)
-    
-    # Vérifie si les poids existent déjà
     base_model = SimpleCNN()
     if os.path.exists(save_path):
         print("Chargement du modèle sauvegardé")
-        base_model.load_state_dict(torch.load(save_path, map_location=device))  # même architecture que celle qui a sauvegardé
+        base_model.load_state_dict(torch.load(save_path, map_location=device))
     else:
         print("Pas de modèle sauvegardé, on entraîne le modèle")
         base_model = train_model(base_model, trainloader, valloader, device, epochs=20, save_path=save_path)
         base_model.load_state_dict(torch.load(save_path, map_location=device))  # recharge les meilleurs poids
 
-    # Choix des couches à masquer par l'utilisateur
-    user_layers = input(
-        "Sur quelles couches voulez-vous appliquer le MC Dropout ? "
-        "(choisissez parmi conv1, conv2, conv3, fc1, séparées par des virgules) : ")
-    mc_layers = [layer.strip() for layer in user_layers.split(',') if layer.strip() in ['conv1','conv2','conv3','fc1']]
-
-    model = CNN_MCdropout(base_model, mc_layers=mc_layers, p1=0.1, p2=0.1, p3=0.1, p4=0.1).to(device)
+    print(f"Utilisation du dico_layers : {dico_layers}")
+    model = CNN_MCdropout(base_model, dico_layers=dico_layers).to(device)
 
     test_loss, test_acc = evaluate(model, testloader, device)
     print(f"Final Test Loss: {test_loss:.4f} - Test Acc: {test_acc:.4f}")
@@ -63,14 +47,22 @@ def main():
     T = config.MC_T
     
     user_metrics = input(
-    "Quelles métriques voulez-vous calculer ? (mc_estimate, variance, predictive_entropy, relative_norm)\n"
-    "Vous pouvez en choisir plusieurs, séparées par des virgules : ")
+        "Quelles métriques voulez-vous calculer ? (mc_estimate, variance_predicted, variance_max, predictive_entropy_predicted, predictive_entropy_max, relative_norm)\n"
+        "Vous pouvez en choisir plusieurs, séparées par des virgules : ")
     user_metrics = [m.strip() for m in user_metrics.split(",")]
-    outputs, mean_probs, metric_values = generate_mc_outputs(model, X, T, metrics=user_metrics, labels=Y)
-    print(f"Liste des métriques choisies par l\'utilisateur : {user_metrics}")
+    outputs, mean_probs, metric_values, elapsed_forward, elapsed_metrics = generate_mc_outputs(
+        model, X, T, metrics=user_metrics, labels=Y
+    )
+    print(f"Liste des métriques choisies par l'utilisateur : {user_metrics}")
     for metric in user_metrics:
         print(f"Métrique choisie : {metric}")
         print(f"Résultat : {metric_values[metric]}\n")
+
+    # Appel accuracy_threshold pour variance_predicted et predictive_entropy_predicted si présents
+    Y_hat = mean_probs.argmax(1)
+    for metric in ["variance_predicted", "variance_max", "predictive_entropy_predicted", "predictive_entropy_max"]:
+        if metric in metric_values:
+            accuracy_threshold(Y_hat, Y, metric_values[metric], metric_name=metric, num_thresholds=1000)
     
 
 if __name__ == "__main__":
