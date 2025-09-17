@@ -77,7 +77,7 @@ def binom_sum(b,e,n):
 
 def B_star(delta, e, n, eps=1e-6, b1=0, b2=1):
     """
-    b_star iterative computation by dichotomy search (Algorithm 1 in the paper) given probability delta
+    b_star recursive computation
     approximate solution up to eps
     """
     if (e==n) or (n==0):
