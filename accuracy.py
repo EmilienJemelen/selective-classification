@@ -7,9 +7,6 @@ import torchvision
 import torchvision.transforms as transforms
 import torch.optim as optim
 from torch.utils.data import random_split
-from tqdm import tqdm # pour la progression 
-import time #pour le temps de calcul
-import copy #pour copier base_model
 import numpy as np
 import matplotlib.pyplot as plt
 from sklearn.isotonic import IsotonicRegression

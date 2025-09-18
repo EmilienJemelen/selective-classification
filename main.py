@@ -8,7 +8,7 @@ from utils import generate_mc_outputs
 import config
 from dico import dico_layers
 from reproducibility import set_global_seed
-from mc_dropout_utils import accuracy_threshold
+from accuracy import accuracy_threshold
 
 def load_data(batch_size):
     transform = transforms.Compose([transforms.ToTensor()])
