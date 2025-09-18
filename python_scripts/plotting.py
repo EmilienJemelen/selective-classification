@@ -14,6 +14,7 @@ import warnings
 from matplotlib.lines import Line2D
 from matplotlib import MatplotlibDeprecationWarning
 from python_scripts.sgp_utils import *
+from matplotlib.ticker import AutoMinorLocator
 warnings.filterwarnings("ignore", category=MatplotlibDeprecationWarning)
 
 
@@ -23,44 +24,48 @@ def metric_plots(all_results:dict,
                  xlim: list = [0, 1],
                  ylim : list = [0, 1],
                  title : str =  ''):
-    
     """
     Plot one or more metric curves from experiment results.
-
-    Args:
-        all_results (dict): Nested results dictionary indexed by keys in `lines_list`.
-        metric (str): Name of the metric to display on the y-axis.
-        lines_list (list): List of dicts, each describing a line with keys:
-            - 'kappa': chosen confidence function (Softmax Response/SR or Monte Carlo Dropout minus variance/MCD)
-            - 'x_axis': column for the x-axis.
-            - 'colname': column for the y-axis.
-            - 'name': label for the legend.
-            - 'colour': line color.
-            - 'style': line style.
-            - 'x_axis_name': label for x-axis.
-        xlim (list, optional): Limits for the x-axis. Default [0, 1].
-        ylim (list, optional): Limits for the y-axis. Default [0, 1].
-        title (str, optional): Title for the plot. Default ''.
-
-    Returns:
-        None. Displays the plot.
     """
 
-    for line in lines_list:
-        kappa, x_axis, colname, name, c, style = line['kappa'], line['x_axis'], line['colname'], line['name'], line['colour'], line['style']
-        plt.plot(all_results[kappa][x_axis], all_results[kappa][colname], label=name, c=c, linestyle=style)
+    plt.figure(figsize=(6, 4))  # Larger, balanced figure size
     
-    plt.xlabel(line['x_axis_name'])
-    plt.ylabel(metric)
+    for line in lines_list:
+        kappa, x_axis, colname, name, c, style = (
+            line['kappa'], line['x_axis'], line['colname'], 
+            line['name'], line['colour'], line['style']
+        )
+        plt.plot(
+            all_results[kappa][x_axis],
+            all_results[kappa][colname],
+            label=name,
+            c=c,
+            linestyle=style,
+            linewidth=2,            # thicker lines
+            alpha=0.9               # slight transparency
+        )
+    
+    plt.xlabel(line['x_axis_name'], fontsize=12)
+    plt.ylabel(metric, fontsize=12)
     plt.xlim(xlim[0], xlim[1])
     plt.ylim(ylim[0], ylim[1])
-    plt.legend()
-    plt.grid()
-
+    
+    plt.legend(
+        frameon=True, 
+        facecolor="white", 
+        edgecolor="black", 
+        fontsize=10,
+        loc="best"
+    )
+    
+    plt.grid(True, linestyle="--", linewidth=0.7, alpha=0.5)  # subtle dashed grid
+    
+    if len(title) > 0:
+        plt.title(title, fontsize=14, weight="bold", loc="center")
+    
     plt.tight_layout()
-    if len(title)>0:
-        plt.title(title, loc = 'center')
     plt.show()
+
 
 
 def metric_plots_with_imbalance(all_propor_dfs, proportions,
@@ -192,172 +197,205 @@ def plot_all_metrics(train_set: pd.DataFrame,
                      ylim1: list = [0, 1], ylim2: list = [0, 1],
                      by_coverage: bool = False,
                      metrics: list = ['standard', 'FP', 'FN', 'FPR', 'FNR', 'PPV', 'SE', 'SP']):
-    
     """
     Plot training bounds and test metrics across thresholds or coverages.
-
-    Produces two subplots: one for 0/1 risk, FP, FN, FPR, FNR 
-    and one for PPV, SE, SP (they're usually on same scale). Each metric is shown with its 
-    theoretical bound (from training) and empirical performance (on test data).
-
-    Args:
-        train_set (pd.DataFrame): Training set with confidence/threshold scores.
-        test_set (pd.DataFrame): Test set with labels and predictions.
-        delta (float): Confidence level for bound computation.
-        color_map (dict): Mapping from metric names to colors.
-        title (str, optional): Figure title. Default ''.
-        xlim1, xlim2 (list, optional): X-axis limits for left/right subplot.
-        ylim1, ylim2 (list, optional): Y-axis limits for left/right subplot.
-        by_coverage (bool, optional): If True, use coverage as x-axis instead of θ.
-        metrics (list, optional): Metrics to plot. Default includes common risks and rates.
-
-    Returns:
-        None. Displays the plots.
     """
 
-    label_map = {
-        'standard': '0/1 risk',
-        'FP': 'FP risk',
-        'FN': 'FN risk',
-        'FPR': 'FPR',
-        'FNR': 'FNR',
+    rc = {
+        "font.size": 11,
+        "axes.titlesize": 14,
+        "axes.labelsize": 12,
+        "axes.titleweight": "bold",
+        "axes.linewidth": 1.0,
+        "xtick.labelsize": 10,
+        "ytick.labelsize": 10,
+        "legend.frameon": True,
+        "legend.framealpha": 0.9,
+        "legend.facecolor": "white",
+        "legend.edgecolor": "#D0D0D0",
+        "lines.linewidth": 2.0,
+        "grid.alpha": 0.4,
     }
 
-    def plot_metrics_on_ax(ax, metrics_subset, xlim, ylim, label_getter):
-        last_thetas = None
-        for metric in metrics_subset:
-            color = color_map[metric]
-            thetas, bounds = bound_evo_w_theta(metric, train_set, delta, steps=50)
-            last_thetas = thetas
+    with plt.rc_context(rc), plt.style.context("seaborn-v0_8-whitegrid"):
 
-            # Training bound
+        label_map = {
+            'standard': '0/1 risk',
+            'FP': 'FP risk',
+            'FN': 'FN risk',
+            'FPR': 'FPR',
+            'FNR': 'FNR',
+        }
+
+        def _beautify_ax(ax):
+            ax.set_facecolor("white")
+            for spine in ax.spines.values():
+                spine.set_visible(True)
+                spine.set_color("#B0B0B0")
+                spine.set_linewidth(0.9)
+            ax.tick_params(which="both", length=4, width=0.8)
+            ax.xaxis.set_minor_locator(AutoMinorLocator())
+            ax.yaxis.set_minor_locator(AutoMinorLocator())
+            ax.grid(True, which='major', linestyle='--', linewidth=0.7, alpha=0.5)
+            ax.grid(True, which='minor', linestyle=':', linewidth=0.5, alpha=0.3)
+
+        def plot_metrics_on_ax(ax, metrics_subset, xlim, ylim, label_getter):
+            last_thetas = None
+            for metric in metrics_subset:
+                color = color_map[metric]
+                thetas, bounds = bound_evo_w_theta(metric, train_set, delta, steps=50)
+                last_thetas = thetas
+
+                # Training bound
+                if by_coverage:
+                    train_coverages = [
+                        train_set.loc[train_set.kappa >= theta].shape[0] / train_set.shape[0]
+                        for theta in thetas
+                    ]
+                    idx = np.argsort(train_coverages)
+                    x_train, y_train = np.array(train_coverages)[idx], np.array(bounds)[idx]
+                else:
+                    x_train, y_train = thetas, bounds
+                ax.plot(x_train, y_train, color=color, label=label_getter(metric) + ' bound', linewidth=2, alpha=0.95)
+
+                # Test empirical metric
+                emp_metrics, test_coverages = [], []
+                for theta in thetas:
+                    selected_set = test_set.loc[test_set.kappa >= theta].copy()
+                    test_coverages.append(selected_set.shape[0] / test_set.shape[0])
+                    try:
+                        emp_metrics.append(emp_metric(selected_set, metric=metric))
+                    except ValueError:
+                        emp_metrics.append(np.nan)
+
+                if by_coverage:
+                    idx = np.argsort(test_coverages)
+                    x_test, y_test = np.array(test_coverages)[idx], np.array(emp_metrics)[idx]
+                else:
+                    x_test, y_test = thetas, emp_metrics
+                ax.plot(x_test, y_test, linestyle='--', color=color, label='Test ' + label_getter(metric), linewidth=2, alpha=0.95)
+
             if by_coverage:
-                train_coverages = [
-                    train_set.loc[train_set.kappa >= theta].shape[0] / train_set.shape[0]
-                    for theta in thetas
-                ]
-                idx = np.argsort(train_coverages)
-                x_train, y_train = np.array(train_coverages)[idx], np.array(bounds)[idx]
+                ax.set_xlim(xlim[0], xlim[1])
+                ax.set_xlabel('Coverage')
             else:
-                x_train, y_train = thetas, bounds
-            ax.plot(x_train, y_train, color=color, label=label_getter(metric) + ' bound', linewidth=2)
+                ax.set_xlim(min(last_thetas), max(last_thetas))
+                ax.set_xlabel(r'$\theta$')
+            ax.set_ylim(ylim[0], ylim[1])
+            ax.set_ylabel('Metric value')
 
-            # Test empirical metric
-            emp_metrics, test_coverages = [], []
-            for theta in thetas:
-                selected_set = test_set.loc[test_set.kappa >= theta].copy()
-                test_coverages.append(selected_set.shape[0] / test_set.shape[0])
-                try:
-                    emp_metrics.append(emp_metric(selected_set, metric=metric))
-                except ValueError:
-                    emp_metrics.append(np.nan)
+            # Clean legend
+            ax.legend(loc="best", ncols=1, handlelength=2.5, borderpad=0.6, labelspacing=0.5)
 
-            if by_coverage:
-                idx = np.argsort(test_coverages)
-                x_test, y_test = np.array(test_coverages)[idx], np.array(emp_metrics)[idx]
-            else:
-                x_test, y_test = thetas, emp_metrics
-            ax.plot(x_test, y_test, linestyle='--', color=color, label='Test ' + label_getter(metric), linewidth=2)
+            _beautify_ax(ax)
 
-        if by_coverage:
-            ax.set_xlim(xlim[0], xlim[1])
-            ax.set_xlabel('Coverage')
-        else:
-            ax.set_xlim(min(last_thetas), max(last_thetas))
-            ax.set_xlabel(r'$\theta$')
-        ax.set_ylim(ylim[0], ylim[1])
-        ax.set_ylabel('Metric value')
-        ax.legend()
-        ax.grid(True, which='both', linestyle='--', linewidth=0.5, alpha=0.7)
+        # Create subplots
+        fig, axes = plt.subplots(1, 2, figsize=(16, 6))
+        fig.patch.set_facecolor("white")
 
-    # Create subplots
-    fig, axes = plt.subplots(1, 2, figsize=(16, 6))
+        left_group = [m for m in metrics if m in ['standard', 'FP', 'FN', 'FPR', 'FNR']]
+        right_group = [m for m in metrics if m in ['PPV', 'SE', 'SP']]
 
-    left_group = [m for m in metrics if m in ['standard', 'FP', 'FN', 'FPR', 'FNR']]
-    right_group = [m for m in metrics if m in ['PPV', 'SE', 'SP']]
+        if left_group:
+            plot_metrics_on_ax(axes[0], left_group, xlim1, ylim1, lambda m: label_map[m])
+        if right_group:
+            plot_metrics_on_ax(axes[1], right_group, xlim2, ylim2, lambda m: m)
 
-    if left_group:
-        plot_metrics_on_ax(axes[0], left_group, xlim1, ylim1, lambda m: label_map[m])
-    if right_group:
-        plot_metrics_on_ax(axes[1], right_group, xlim2, ylim2, lambda m: m)
-
-    plt.tight_layout()
-    if len(title) > 0:
-        plt.title(title)
-    plt.show()
+        plt.tight_layout()
+        if len(title) > 0:
+            plt.suptitle(title, fontsize=15, weight="bold", y=1.02)
+        plt.show()
 
 
 def two_metrics_bounds(metric1, metric2, all_bounds_SR, all_bounds_MCD, num_labels = 15,
                        xlim=None, ylim=None):
-    
     """
     Compare two metric bounds (e.g., SR vs MCD) on a scatter plot.
-
-    Plots the relationship between `metric1` and `metric2` bounds from SR 
-    (and optionally MCD), with annotated points showing (θ, coverage) values.
-
-    Args:
-        metric1 (str): Name of the first metric.
-        metric2 (str): Name of the second metric.
-        all_bounds_SR (dict): Bounds dictionary for SR, must include keys 
-            [metric1, metric2, 'thetas', 'coverages'].
-        all_bounds_MCD (dict or None): Bounds dictionary for MCD, same format 
-            as SR. If None, only SR is plotted.
-        num_labels (int, optional): Number of annotated points. Default 15.
-        xlim (list, optional): x-axis limits. Auto-scaled if None.
-        ylim (list, optional): y-axis limits. Auto-scaled if None.
-
-    Returns:
-        None. Displays the plot.
     """
 
-    #### SR ####
-    x1 = all_bounds_SR[metric1]
-    y1 = all_bounds_SR[metric2]
-    labels = list(zip(all_bounds_SR['thetas'], all_bounds_SR['coverages']))
-    plt.scatter(x=x1, y=y1, marker='+', label='SR')
-    # Choose evenly spaced indices along the curve
-    indices = np.linspace(0, len(x1) - 1, num=num_labels, dtype=int)
-    for j in indices:
-        label = f'({labels[j][0]:.2f}, {labels[j][1]:.2f})'
-        plt.annotate(label, (x1[j], y1[j]), textcoords="offset points", xytext=(5,5), ha='left', fontsize=8)
+    # --- STYLE ONLY (no logic changes) -------------------------------------------
+    rc = {
+        "font.size": 11,
+        "axes.titlesize": 14,
+        "axes.labelsize": 12,
+        "axes.linewidth": 1.0,
+        "xtick.labelsize": 10,
+        "ytick.labelsize": 10,
+        "legend.frameon": True,
+        "legend.framealpha": 0.9,
+        "legend.facecolor": "white",
+        "legend.edgecolor": "#D0D0D0",
+        "grid.alpha": 0.4,
+    }
+    with plt.rc_context(rc), plt.style.context("seaborn-v0_8-whitegrid"):
+        plt.figure(figsize=(6, 4.5))
+        ax = plt.gca()
+        ax.set_facecolor("white")
+        for spine in ax.spines.values():
+            spine.set_visible(True)
+            spine.set_color("#B0B0B0")
+            spine.set_linewidth(0.9)
+        ax.xaxis.set_minor_locator(AutoMinorLocator())
+        ax.yaxis.set_minor_locator(AutoMinorLocator())
+        ax.grid(True, which="major", linestyle="--", linewidth=0.7, alpha=0.5)
+        ax.grid(True, which="minor", linestyle=":", linewidth=0.5, alpha=0.3)
+    # -----------------------------------------------------------------------------
 
-    if all_bounds_MCD is not None:
-        #### MCD ####
-        x2 = all_bounds_MCD[metric1]
-        y2 = all_bounds_MCD[metric2]
-        labels = list(zip(all_bounds_MCD['thetas'], all_bounds_MCD['coverages']))
-        plt.scatter(x=x2, y=y2, marker='^', label='MCD', c='y')
+        #### SR ####
+        x1 = all_bounds_SR[metric1]
+        y1 = all_bounds_SR[metric2]
+        labels = list(zip(all_bounds_SR['thetas'], all_bounds_SR['coverages']))
+        plt.scatter(x=x1, y=y1, marker='+', label='SR', s=60, linewidths=1.8, zorder=2)
+
         # Choose evenly spaced indices along the curve
-        indices = np.linspace(0, len(x2) - 1, num=num_labels, dtype=int)
+        indices = np.linspace(0, len(x1) - 1, num=num_labels, dtype=int)
         for j in indices:
             label = f'({labels[j][0]:.2f}, {labels[j][1]:.2f})'
-            plt.annotate(label, (x2[j], y2[j]), textcoords="offset points", xytext=(5,5), ha='left', fontsize=8)
+            plt.annotate(label, (x1[j], y1[j]),
+                         textcoords="offset points",
+                         xytext=(0, -14),  # 👇 below the point
+                         ha='center', va='top',
+                         fontsize=10,
+                         zorder=3)
 
-    if num_labels>0:
-        # Add a single legend-like text to explain the annotations
-        plt.text(0.02, 0.98, r'Ticks: ($\theta$, coverage)',
-                transform=plt.gca().transAxes,
-                fontsize=9, verticalalignment='top', horizontalalignment='left',
-                bbox=dict(boxstyle="round,pad=0.3", facecolor="white", edgecolor="gray", alpha=0.7))
-    
-    plt.xlabel(metric1 + ' bound')
-    plt.ylabel(metric2 + ' bound')
-    plt.grid()
-    plt.legend()
-    if xlim is not None:
-        plt.xlim(xlim[0],xlim[1])
-    else:
         if all_bounds_MCD is not None:
-            plt.xlim(min(min(x1),min(x2))*0.9,1.1*max(max(x1),max(x2)))
-        else:
-            plt.xlim(min(x1)*0.9,1.1*max(x1))
-    if ylim is not None:
-        plt.ylim(ylim[0],ylim[1])
-    else:
-        if all_bounds_MCD is not None:
-            plt.ylim(min(min(y1),min(y2))*0.9,1.1*max(max(y1),max(y2)))
-        else:
-            plt.ylim(min(y1)*0.9,1.1*max(y1))
+            #### MCD ####
+            x2 = all_bounds_MCD[metric1]
+            y2 = all_bounds_MCD[metric2]
+            plt.scatter(x=x2, y=y2, marker='^', label='MCD',
+                        c='y', s=40, edgecolors='k', linewidths=0.6, zorder=2)
+            # ❌ no annotations here
 
-    plt.show()
+        if num_labels > 0:
+            # Legend-like note for annotations
+            plt.text(0.02, 0.98, r'Ticks: ($\theta$, coverage)',
+                     transform=plt.gca().transAxes,
+                     fontsize=11,
+                     va='top', ha='left',
+                     bbox=dict(boxstyle="round,pad=0.35", facecolor="white",
+                               edgecolor="gray", alpha=0.8),
+                     zorder=4)
+
+        plt.xlabel(metric1 + ' bound')
+        plt.ylabel(metric2 + ' bound')
+        plt.legend(loc="best", borderpad=0.6, labelspacing=0.5, handlelength=2.0)
+        plt.grid(True)
+
+        if xlim is not None:
+            plt.xlim(xlim[0], xlim[1])
+        else:
+            if all_bounds_MCD is not None:
+                plt.xlim(min(min(x1), min(x2)) * 0.9, 1.1 * max(max(x1), max(x2)))
+            else:
+                plt.xlim(min(x1) * 0.9, 1.1 * max(x1))
+
+        if ylim is not None:
+            plt.ylim(ylim[0], ylim[1])
+        else:
+            if all_bounds_MCD is not None:
+                plt.ylim(min(min(y1), min(y2)) * 0.9, 1.1 * max(max(y1), max(y2)))
+            else:
+                plt.ylim(min(y1) * 0.9, 1.1 * max(y1))
+
+        plt.tight_layout()
+        plt.show()

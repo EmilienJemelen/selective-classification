@@ -85,7 +85,7 @@ def emp_metric(samples, metric = 'standard'):
         raise ValueError("metric must be in 'standard', 'FP','FN','FPR','FNR','PPV','SE','SP'")
 
 
-def upper_bound_denominator(metric, selected_samples, delta, m):
+def upper_bound_denominator(metric, selected_samples, delta, n):
     """Denominator term for upper bounds of ratio metrics.
 
     Applies to: FPR, FNR, PPV, SE, SP.
@@ -94,12 +94,12 @@ def upper_bound_denominator(metric, selected_samples, delta, m):
         metric (str): Metric name.
         selected_samples (pd.DataFrame): Selected subset with `y_pred`, `y_true`.
         delta (float): Confidence level.
-        m (int): Total sample size.
+        n (int): Total sample size.
 
     Returns:
         float: Denominator value.
     """
-    d2 = np.sqrt(-m*np.log(delta/2))/selected_samples.shape[0]
+    d2 = np.sqrt(-n*np.log(delta/2))/selected_samples.shape[0]
     if (metric == 'PPV'):
         d1 = selected_samples.y_pred.sum()/selected_samples.shape[0]
     else:
@@ -111,7 +111,7 @@ def upper_bound_denominator(metric, selected_samples, delta, m):
         return d1-d2
 
 
-def bound(b, selected_samples, delta, metric, m):
+def bound(b, selected_samples, delta, metric, n):
     """Transform risk bound `b` into a metric-specific bound.
 
     Args:
@@ -119,7 +119,7 @@ def bound(b, selected_samples, delta, metric, m):
         selected_samples (pd.DataFrame): Selected subset.
         delta (float): Confidence level.
         metric (str): Target metric.
-        m (int): Total sample size.
+        n (int): Total sample size.
 
     Returns:
         float: Metric bound in (0,1), or NaN if invalid.
@@ -127,10 +127,10 @@ def bound(b, selected_samples, delta, metric, m):
     if metric in ['standard', 'FP', 'FN']:
         B = b
     elif metric in ['FPR', 'FNR']:
-        B = b/abs(upper_bound_denominator(metric, selected_samples, delta, m))
+        B = b/abs(upper_bound_denominator(metric, selected_samples, delta, n))
     else: # PPV, SE, SP
-        B = 1 - b/abs(upper_bound_denominator(metric, selected_samples, delta ,m))
-    if (B>=1) or (B<=0):
+        B = 1 - b/abs(upper_bound_denominator(metric, selected_samples, delta ,n))
+    if (B>=1) or (B<=0): # should not happen, but no proof can be given that it cannot happen in pathological cases
         return np.nan
     else:
         return B
@@ -167,9 +167,9 @@ def sgp_dicho(delta, r_star, Sn, metric, eps=0.001):
         dict: {'theta_star','bound','delta','coverage','emp_metric'} or {} if none.
     """
     
-    m = Sn.shape[0]
+    n = Sn.shape[0]
     zmin = 0
-    zmax = m
+    zmax = n
     dist = 1
 
     while dist > eps:
@@ -196,7 +196,7 @@ def sgp_dicho(delta, r_star, Sn, metric, eps=0.001):
     return {'theta_star' : theta,
             'bound' : b,
             'delta' : delta,
-            'coverage' : selected_samples.shape[0]/m,
+            'coverage' : selected_samples.shape[0]/n,
             'emp_metric' : emp_metric(selected_samples, metric = metric)}
 
 
@@ -245,7 +245,7 @@ def sgp_greedy_search(delta, r_star, Sn, metric, steps=100):
         if b==1:
             return {}
             
-        B = bound(b, selected_samples, delta, metric, m=Sn.shape[0])
+        B = bound(b, selected_samples, delta, metric, n=Sn.shape[0])
         if np.isnan(B):
             return {}
 
@@ -342,7 +342,7 @@ def sgp_at_targets_on_imbalanced_sets(proportions_of_1, metric_targets,
     return all_propor_dfs
 
 
-def bound_evo_w_theta(metric, Sn, delta, steps=100):
+def bound_evo_w_theta(metric, Sn, delta, steps=100, frac_details=False):
     """Trace the metric bound as a function of θ.
 
     Args:
@@ -362,8 +362,10 @@ def bound_evo_w_theta(metric, Sn, delta, steps=100):
     Sn = Sn.sort_values('kappa', ascending=True)
     kappas = sorted(np.array(Sn.kappa))
     bounds, thetas = [], np.linspace(kappas[0], kappas[-1], steps)
+    numerators, denominators =[],[]
 
-    for theta in thetas:
+    print(metric,' bounds')
+    for theta in tqdm(thetas):
 
         selected_samples = Sn.loc[Sn.kappa >= theta]
         selected_errs_count = emp_errs_count(selected_samples, loss = metric_loss_mapping[metric])
@@ -377,16 +379,26 @@ def bound_evo_w_theta(metric, Sn, delta, steps=100):
             b = 1 # by definition of B^*(.) in Proposition 1.
         if b==1:
             break
-        
-        B = bound(b, selected_samples, delta, metric, m=Sn.shape[0])
+
+        B = bound(b, selected_samples, delta, metric, n=Sn.shape[0])
         if np.isnan(B):
             break
+        if frac_details:
+            numerators.append(b)
+            d = upper_bound_denominator(metric, selected_samples, delta, Sn.shape[0])
+            denominators.append(d)
+
         bounds.append(B) 
 
     while len(bounds) < len(thetas):
         bounds.append(np.nan)
+        if frac_details:
+            numerators.append(np.nan)
+            denominators.append(np.nan)
 
-    return thetas, bounds
+    if frac_details:
+        return thetas, bounds, numerators, denominators
+    return thetas, bounds 
 
 
 def reachable_bounds(metrics_list, Sn, delta, steps=100):

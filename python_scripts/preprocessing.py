@@ -86,54 +86,95 @@ def prepare_sgp_dico(dataloader, model, device, T):
     return sgp_dico
 
 
-def generate_imbalanced_datasets(dataset, proportions, label_col='y_true', seed=0):
+def generate_imbalanced_datasets(dataset, proportions, label_col='y_true', seed=0, fixed=False):
     """
-    Create datasets with specified class-1 proportions by downsampling the majority class (adaptive logic).
+    Create datasets with specified class-1 proportions.
 
-    If there are enough class-0s, downsample them. If not, downsample class-1s instead.
+    When fixed=False (default):
+        - Reproduces the original adaptive logic: tries to achieve the target proportion by
+          downsampling the majority class; if not possible, downsample the minority instead.
+        - Resulting dataset sizes may differ from the original.
+
+    When fixed=True:
+        - Always returns datasets with the same total size as the input.
+        - Achieves the target proportion by downsampling the majority class when possible and
+          oversampling (with replacement) the minority class when necessary.
 
     Args:
-        dataset (pd.DataFrame): Input DataFrame with binary labels.
-        proportions (list of float): Desired proportions of class-1 samples (e.g., [0.1, 0.2]).
+        dataset (pd.DataFrame): Input DataFrame with a binary label column.
+        proportions (list[float|None]): Desired class-1 proportions; `None` returns a shuffled copy.
         label_col (str): Name of the label column.
         seed (int): Random seed for reproducibility.
+        fixed (bool): If True, keep the generated dataset size equal to len(dataset).
 
     Returns:
-        list of pd.DataFrame: List of datasets matching the target class-1 proportions.
+        list[pd.DataFrame]: One dataset per requested proportion.
     """
-    np.random.seed(seed)
+    # Use a dedicated RNG so multiple .sample() calls advance deterministically.
+    rng = np.random.RandomState(seed)
 
     df_pos = dataset[dataset[label_col] == 1]
     df_neg = dataset[dataset[label_col] == 0]
 
     N1 = len(df_pos)
     N0 = len(df_neg)
+    N_orig = len(dataset)
 
     datasets = []
 
     for p in proportions:
         if p is None:
-            datasets.append(dataset.sample(frac=1, random_state=seed).reset_index(drop=True))
+            # Just return a shuffled copy of the original (still fixed-size).
+            datasets.append(dataset.sample(frac=1, random_state=rng).reset_index(drop=True))
             continue
-        
+
         if not (0 < p < 1):
             raise ValueError(f"Proportion must be between 0 and 1 (exclusive). Got {p}")
 
-        # Target total size to achieve proportion p of class-1
-        N_total = int(N1 / p)
-        N0_required = N_total - N1
+        if fixed:
+            # Target counts constrained to original total size.
+            # Use round, but clamp to [1, N_orig-1] to avoid degenerate all-one-class results.
+            N1_target = int(round(p * N_orig))
+            N1_target = max(1, min(N_orig - 1, N1_target))
+            N0_target = N_orig - N1_target
 
-        if N0_required <= N0:
-            # Downsample class-0
-            df_neg_sampled = df_neg.sample(n=N0_required, random_state=seed, replace=False)
-            df_combined = pd.concat([df_pos, df_neg_sampled], axis=0)
+            # Sample positives
+            if N1_target <= N1:
+                df_pos_sampled = df_pos.sample(n=N1_target, replace=False, random_state=rng)
+            else:
+                # Oversample with replacement to reach target
+                df_pos_sampled = df_pos.sample(n=N1_target, replace=True, random_state=rng)
+
+            # Sample negatives
+            if N0_target <= N0:
+                df_neg_sampled = df_neg.sample(n=N0_target, replace=False, random_state=rng)
+            else:
+                # Oversample with replacement to reach target
+                df_neg_sampled = df_neg.sample(n=N0_target, replace=True, random_state=rng)
+
+            df_combined = pd.concat([df_pos_sampled, df_neg_sampled], axis=0)
+
         else:
-            # Not enough class-0s to meet proportion — fallback to downsampling class-1
-            N1_required = int(p * (N0 + N1))  # recalculate based on full dataset size
-            df_pos_sampled = df_pos.sample(n=N1_required, random_state=seed, replace=False)
-            df_combined = pd.concat([df_pos_sampled, df_neg], axis=0)
+            # Original adaptive downsampling behavior (sizes may differ from N_orig).
+            if N1 == 0 or N0 == 0:
+                raise ValueError("Both classes must be present in the input dataset for adaptive mode.")
 
-        df_shuffled = df_combined.sample(frac=1, random_state=seed).reset_index(drop=True)
+            # Target total size to achieve proportion p of class-1 by downsampling majority.
+            N_total = int(N1 / p)
+            N0_required = N_total - N1
+
+            if N0_required <= N0:
+                # Downsample class-0
+                df_neg_sampled = df_neg.sample(n=N0_required, replace=False, random_state=rng)
+                df_combined = pd.concat([df_pos, df_neg_sampled], axis=0)
+            else:
+                # Not enough class-0s — fallback to downsampling class-1 based on full dataset size
+                N1_required = int(p * (N0 + N1))
+                df_pos_sampled = df_pos.sample(n=min(N1_required, N1), replace=False, random_state=rng)
+                df_combined = pd.concat([df_pos_sampled, df_neg], axis=0)
+
+        # Shuffle and reset index
+        df_shuffled = df_combined.sample(frac=1, random_state=rng).reset_index(drop=True)
         datasets.append(df_shuffled)
 
     return datasets
