@@ -26,35 +26,93 @@ def mc_predict_mean_probs(model, X, T=1000, verbose=True):
         print(f"Temps total: {elapsed:.2f} s  |  Temps moyen par passe: {elapsed/T:.4f} s")
     return probs_mc.mean(0), elapsed
 
-def generate_mc_outputs(model, X, T, metrics="mc_estimate", labels=None):
-    model.train()  # dropout actif en inférence
+def generate_mc_outputs(model, X, T=1000, metrics=["mc_estimate"], labels=None, verbose=True):
+    """
+    Effectue T passes Monte Carlo Dropout sur le modèle pour le batch X,
+    calcule les métriques d'incertitude spécifiées.
+    Retourne les sorties de chaque passe, la moyenne des probabilités softmax,
+    un dictionnaire des valeurs de métriques, et les temps de calcul.
+    """
+    model.train()
     outputs = []
+    mean_probs = None 
+
+    start_forward = time.time()
     with torch.no_grad():
-        for _ in range(T):
-            out = model(X)                      
-            outputs.append(out.unsqueeze(0))    
-    
-    outputs = torch.cat(outputs, dim=0)         
-    all_probs   = torch.softmax(outputs, dim=2)  
-    mean_probs  = all_probs.mean(dim=0)          # moyenne des softmax
-    var_pred  = outputs.var(dim=0)                # variance des logits
-   
+        for _ in tqdm(range(T), disable=not verbose):
+            out = model(X)
+            outputs.append(out.unsqueeze(0))
+    elapsed_forward = time.time() - start_forward
+
+    outputs = torch.cat(outputs, dim=0)  # [T, batch, num_classes]
     results = {}
+    elapsed_metrics = {}
+
+    # Calcul de la classe prédite initialement (premier passage sans dropout)
+    with torch.no_grad():
+        first_logits = model(X)
+        first_probs = torch.softmax(first_logits, dim=1)
+        initial_pred = first_probs.argmax(dim=1)  # [batch], classe prédite pour chaque échantillon
+        
+    all_probs = torch.softmax(outputs, dim=2)  
+    mean_probs = all_probs.mean(dim=0) 
+
     for metric in metrics:
+        start_metric = time.time()
+
         if metric == "mc_estimate":
             results[metric] = mean_probs
-        elif metric == "variance":
-            results[metric] = var_pred
-        elif metric == "predictive_entropy":
-            results[metric] = -(mean_probs * (mean_probs + 1e-12).log()).sum(dim=1) # +1e-12 pour éviter log(0)
+
+        elif metric == "variance_predicted": # var des probas softmax de la classe prédite initialement
+            idx = initial_pred.unsqueeze(0).expand(T, -1) # matrice avec T lignes égales à initial_pred
+            selected_probs = all_probs.gather(2, idx.unsqueeze(2)).squeeze(2) # pour chaque batch, on prend la colonne de la classe prédite initialement
+            var_pred_class = selected_probs.var(dim=0) 
+            results["variance_predicted_mean"] = var_pred_class.mean().item()
+            results["variance_predicted"] = var_pred_class
+
+        elif metric == "variance_max": # variance des probas max (toutes classes confondues) 
+            max_probs, _ = all_probs.max(dim=2)  # shape [T, batch]
+            var_max = max_probs.var(dim=0)  # shape [batch]
+            results["variance_max_mean"] = var_max.mean().item()
+            results["variance_max"] = var_max
+
+        elif metric == "predictive_entropy_predicted": # PE pour la classe prédite initialement      
+            idx = initial_pred.unsqueeze(1)          
+            selected_mean_probs = mean_probs.gather(1, idx).squeeze(1) # on sélectionne la proba moyenne de la classe prédite
+            # entropie binaire pour la classe prédite (p*log(p) + (1-p)*log(1-p))
+            entropies_pred = -(selected_mean_probs * (selected_mean_probs + 1e-12).log() +
+                               (1 - selected_mean_probs) * ((1 - selected_mean_probs + 1e-12).log()))
+            results["predictive_entropy_predicted_mean"] = entropies_pred.mean().item()
+            results["predictive_entropy_predicted"] = entropies_pred
+
+        elif metric == "predictive_entropy_max": # PE de la probabilité max (toutes classes confondues)
+            max_probs, _ = mean_probs.max(dim=1)  # shape [batch]
+            # entropie binaire associée à p_max
+            entropies = -(max_probs * (max_probs + 1e-12).log() +
+                          (1 - max_probs) * ((1 - max_probs + 1e-12).log()))
+            results["predictive_entropy_max_mean"] = entropies.mean().item()
+            results["predictive_entropy_max"] = entropies
+
         elif metric == "relative_norm":
             if labels is None:
-                raise ValueError("labels must be provided for relative_norm metric")
+                raise ValueError("labels doivent être fournis pour relative_norm")
             labels_onehot = F.one_hot(labels, num_classes=mean_probs.size(1)).float()
-            diff_norm = torch.norm(mean_probs - labels_onehot, dim=1)   # ||ŷ̄ - Y||
+            diff_norm = torch.norm(mean_probs - labels_onehot, dim=1)
             denom = torch.max(torch.norm(mean_probs, dim=1), torch.norm(labels_onehot, dim=1))
-            results[metric] = diff_norm / (denom + 1e-12)                  
+            relative_norm = diff_norm / (denom + 1e-12)
+            results[metric + "_mean"] = relative_norm.mean().item()
+            results[metric] = relative_norm
+
         else:
-            raise ValueError(f"Metric {metric} non reconnue")
-    model.eval()  # remettre le modèle en mode eval à la fin
-    return outputs, mean_probs, results
+            raise ValueError(f"Métrique {metric} non reconnue")
+
+        elapsed_metrics[metric] = time.time() - start_metric
+
+    model.eval()
+
+    if verbose:
+        print(f"Temps forward pass: {elapsed_forward:.2f}s  |  Temps moyen par passe: {elapsed_forward/T:.4f}s")
+        for m, t in elapsed_metrics.items():
+            print(f"Temps calcul métrique '{m}': {t:.6f}s")
+
+    return outputs, mean_probs, results, elapsed_forward, elapsed_metrics
