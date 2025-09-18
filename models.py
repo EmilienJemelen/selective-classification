@@ -25,18 +25,26 @@ class SimpleCNN(nn.Module):
         return x
 
 class CNN_MCdropout(nn.Module):
-    def __init__(self, model, dico_layers=None):
+    def __init__(self, model, dico_layers=None, before=False):
         super().__init__()
         self.model = model
         self.dico_layers = dico_layers or {}
+        self.before = before
 
         for name, layer in list(self.model._modules.items()):
             if isinstance(layer, nn.Conv2d) and name in self.dico_layers:
                 p = self.dico_layers[name]
-                self.model._modules[name] = nn.Sequential(layer, nn.ReLU(), nn.Dropout2d(p))
+                if self.before:
+                    self.model._modules[name] = nn.Sequential(nn.Dropout2d(p), layer)
+                else:
+                    self.model._modules[name] = nn.Sequential(layer, nn.Dropout2d(p))
+
             elif isinstance(layer, nn.Linear) and name in self.dico_layers:
                 p = self.dico_layers[name]
-                self.model._modules[name] = nn.Sequential(layer, nn.ReLU(), nn.Dropout(p))
-
+                if self.before:
+                    self.model._modules[name] = nn.Sequential(nn.Dropout(p), layer)
+                else:
+                    self.model._modules[name] = nn.Sequential(layer, nn.Dropout(p))
+                
     def forward(self, x):
         return self.model.forward(x)

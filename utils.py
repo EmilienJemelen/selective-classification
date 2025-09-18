@@ -1,5 +1,30 @@
 import torch
 import torch.nn.functional as F
+import time
+from tqdm import tqdm
+import numpy as np
+import matplotlib.pyplot as plt
+
+def mc_predict_mean_probs(model, X, T=1000, verbose=True):
+    """
+    Effectue T passes Monte Carlo Dropout sur le modèle pour le batch X,
+    retourne la moyenne des probabilités softmax sur T passes.
+    Permet d'estimer l'incertitude du modèle via dropout activé à l'inférence.
+    """
+    model.train()
+    probs_list = []
+    start_time = time.time()
+    with torch.no_grad():
+        for _ in tqdm(range(T), disable=not verbose):
+            logits_t = model(X)
+            probs_t = F.softmax(logits_t, dim=1)
+            probs_list.append(probs_t.unsqueeze(0))
+    elapsed = time.time() - start_time
+    probs_mc = torch.cat(probs_list, dim=0)
+    model.eval()
+    if verbose:
+        print(f"Temps total: {elapsed:.2f} s  |  Temps moyen par passe: {elapsed/T:.4f} s")
+    return probs_mc.mean(0), elapsed
 
 def generate_mc_outputs(model, X, T, metrics="mc_estimate", labels=None):
     model.train()  # dropout actif en inférence
