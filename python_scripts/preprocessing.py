@@ -380,3 +380,10 @@ def get_segments(x, condition_mask):
     if in_segment:
         segments.append((start, x[-1]))
     return segments
+
+
+def train_test_split(df, seed, p_train=0.75):
+    train_df = df.sample(frac=p_train, random_state=seed)   # 75% for bounds fitting
+    test_df = df.drop(train_df.index)
+    train_df = train_df.sort_values('kappa', ascending=True).reset_index(drop=True)
+    return train_df, test_df
