@@ -40,7 +40,7 @@ def accuracy_threshold(Y_hat, Y, values, metric_name="mesure", num_thresholds=10
     accuracies = np.array(accuracies)
     min_accuracy = np.nanmin(accuracies)
 
-    plt.figure(figsize=(4,3))
+    plt.figure(figsize=(7, 4))
     plt.plot(thresholds, accuracies, color=color, linewidth=1.5)
     plt.axhline(y=min_accuracy, color='red', linestyle='--', label=f"Accuracy min = {min_accuracy:.4f}")
     plt.xlabel(f"Seuil sur {metric_name}")
@@ -64,7 +64,7 @@ def isotonic_regression(thresholds, accuracies, color='seagreen'):
     iso_reg = IsotonicRegression(increasing=False, out_of_bounds='clip') # décroissante, appelée fonction antitone 
     iso_accuracies = iso_reg.fit_transform(thresholds[mask], accuracies[mask]) # renvoie les valeurs corrigées aux seuils valides uniquement (sans NaN)
 
-    plt.figure(figsize=(4, 3))
+    plt.figure(figsize=(7, 4))
     plt.plot(thresholds, accuracies, label='Accuracy originale', color=color, linewidth=1.5)
     plt.plot(thresholds[mask], iso_accuracies, label='Accuracy monotone (régression isotone)', color='brown', linewidth=1.5)
     plt.fill_between(thresholds[mask], iso_accuracies, accuracies[mask], color='red', alpha=0.3, label='Violations de monotonie')
@@ -92,7 +92,7 @@ def monotonic_rearrangement(arr, thresholds=None, accuracies=None, color='deeppi
         if arr[i] > arr[i-1]: # si la valeur courante est plus grande que la précédente, on la remplace
             arr[i] = arr[i-1]
     if thresholds is not None and accuracies is not None:
-        plt.figure(figsize=(4, 3))
+        plt.figure(figsize=(7, 4))
         plt.plot(thresholds, accuracies, label='Accuracy originale', color=color, linewidth=1.5)
         plt.plot(thresholds, arr, label='Accuracy monotone (réarrangement)', color='brown', linewidth=1.5)
         plt.fill_between(thresholds, arr, accuracies, color='red', alpha=0.3, label='Violations de monotonie')
