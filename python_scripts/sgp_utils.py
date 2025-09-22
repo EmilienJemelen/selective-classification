@@ -388,8 +388,9 @@ def bound_evo_w_theta(metric, Sn, delta, steps=100, frac_details=False):
             d = upper_bound_denominator(metric, selected_samples, delta, Sn.shape[0])
             denominators.append(d)
 
-        bounds.append(B) 
+        bounds.append(B)
 
+    bounds = bounds[:-1] #discarding the bound corresponding to last theta (only one sample in selected set) 
     while len(bounds) < len(thetas):
         bounds.append(np.nan)
         if frac_details:
