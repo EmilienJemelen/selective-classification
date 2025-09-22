@@ -13,7 +13,7 @@ from sklearn.isotonic import IsotonicRegression
 import pandas as pd 
 
 
-def accuracy_threshold(Y_hat, Y, values, metric_name="mesure", num_thresholds=1000, color='blue'):
+def accuracy_threshold(Y_hat, Y, values, metric_name="mesure", num_thresholds=1000, color='blue', display=True):
     """
     Trace la courbe accuracy en fonction du seuil sur une métrique donnée.
     Y_hat : prédictions (tensor ou array)
@@ -21,6 +21,7 @@ def accuracy_threshold(Y_hat, Y, values, metric_name="mesure", num_thresholds=10
     values : vecteur par échantillon de la métrique utilisée comme seuil (variance, predictive entropy, etc.)
     metric_name : nom de la métrique (sera utilisé dans le titre)
     num_thresholds : nombre de seuils à tester
+    display : si True, affiche la courbe, sinon ne l'affiche pas
     """
     if torch.is_tensor(Y_hat): Y_hat = Y_hat.cpu().numpy()
     if torch.is_tensor(Y): Y = Y.cpu().numpy()
@@ -40,22 +41,24 @@ def accuracy_threshold(Y_hat, Y, values, metric_name="mesure", num_thresholds=10
     accuracies = np.array(accuracies)
     min_accuracy = np.nanmin(accuracies)
 
-    plt.figure(figsize=(7, 4))
-    plt.plot(thresholds, accuracies, color=color, linewidth=1.5)
-    plt.axhline(y=min_accuracy, color='red', linestyle='--', label=f"Accuracy min = {min_accuracy:.4f}")
-    plt.xlabel(f"Seuil sur {metric_name}")
-    plt.ylabel("Accuracy (Y_hat = Y)")
-    plt.title(f"Accuracy en fonction du seuil de {metric_name}")
-    plt.legend()
-    plt.grid(True)
-    plt.show()
+    if display:
+        plt.figure(figsize=(7, 4))
+        plt.plot(thresholds, accuracies, color=color, linewidth=1.5)
+        plt.axhline(y=min_accuracy, color='red', linestyle='--', label=f"Accuracy min = {min_accuracy:.4f}")
+        plt.xlabel(f"Seuil sur {metric_name}")
+        plt.ylabel("Accuracy (Y_hat = Y)")
+        plt.title(f"Accuracy en fonction du seuil de {metric_name}")
+        plt.legend()
+        plt.grid(True)
+        plt.show()
 
     return thresholds, accuracies
 
 
-def isotonic_regression(thresholds, accuracies, color='seagreen'):
+def isotonic_regression(thresholds, accuracies, color='seagreen', display=True):
     """
     Affiche la courbe d'accuracy originale et sa correction isotone décroissante.
+    display : si True, affiche la courbe, sinon ne l'affiche pas
     """
     mask = ~np.isnan(accuracies) # ignorer les NaN
     if mask.sum() == 0:
@@ -64,26 +67,28 @@ def isotonic_regression(thresholds, accuracies, color='seagreen'):
     iso_reg = IsotonicRegression(increasing=False, out_of_bounds='clip') # décroissante, appelée fonction antitone 
     iso_accuracies = iso_reg.fit_transform(thresholds[mask], accuracies[mask]) # renvoie les valeurs corrigées aux seuils valides uniquement (sans NaN)
 
-    plt.figure(figsize=(7, 4))
-    plt.plot(thresholds, accuracies, label='Accuracy originale', color=color, linewidth=1.5)
-    plt.plot(thresholds[mask], iso_accuracies, label='Accuracy monotone (régression isotone)', color='brown', linewidth=1.5)
-    plt.fill_between(thresholds[mask], iso_accuracies, accuracies[mask], color='red', alpha=0.3, label='Violations de monotonie')
-    min_iso = np.min(iso_accuracies)
-    plt.axhline(y=min_iso, color='red', linestyle='--', label=f"Min régression isotone = {min_iso:.4f}")
-    plt.xlabel('Seuil')
-    plt.ylabel('Accuracy')
-    plt.title("Correction monotone de la fonction d'accuracy par régression isotone")
-    plt.legend()
-    plt.grid(True)
-    plt.show()
+    if display:
+        plt.figure(figsize=(7, 4))
+        plt.plot(thresholds, accuracies, label='Accuracy originale', color=color, linewidth=1.5)
+        plt.plot(thresholds[mask], iso_accuracies, label='Accuracy monotone (régression isotone)', color='brown', linewidth=1.5)
+        plt.fill_between(thresholds[mask], iso_accuracies, accuracies[mask], color='red', alpha=0.3, label='Violations de monotonie')
+        min_iso = np.min(iso_accuracies)
+        plt.axhline(y=min_iso, color='red', linestyle='--', label=f"Min régression isotone = {min_iso:.4f}")
+        plt.xlabel('Seuil')
+        plt.ylabel('Accuracy')
+        plt.title("Correction monotone de la fonction d'accuracy par régression isotone")
+        plt.legend()
+        plt.grid(True)
+        plt.show()
 
     return iso_accuracies # retourne les valeurs corrigées
 
 
-def monotonic_rearrangement(arr, thresholds=None, accuracies=None, color='deeppink'):
+def monotonic_rearrangement(arr, thresholds=None, accuracies=None, color='deeppink', display=True):
     """
     Applique le réarrangement monotone décroissant à la liste arr.
     Si thresholds et accuracies sont fournis, affiche la comparaison avant/après
+    display : si True, affiche la courbe, sinon ne l'affiche pas
     """
     arr = np.array(arr).copy()
     for i in range(1, len(arr)):
@@ -91,7 +96,7 @@ def monotonic_rearrangement(arr, thresholds=None, accuracies=None, color='deeppi
             continue
         if arr[i] > arr[i-1]: # si la valeur courante est plus grande que la précédente, on la remplace
             arr[i] = arr[i-1]
-    if thresholds is not None and accuracies is not None:
+    if display and thresholds is not None and accuracies is not None:
         plt.figure(figsize=(7, 4))
         plt.plot(thresholds, accuracies, label='Accuracy originale', color=color, linewidth=1.5)
         plt.plot(thresholds, arr, label='Accuracy monotone (réarrangement)', color='brown', linewidth=1.5)
