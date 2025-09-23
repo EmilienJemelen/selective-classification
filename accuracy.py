@@ -33,7 +33,6 @@ def accuracy_threshold(Y_hat, Y, values, metric_name="mesure", num_thresholds=10
 
     for thresh in thresholds:
         mask = values < thresh
-        counts.append(mask.sum())
         if mask.sum() == 0:
             accuracies.append(np.nan)
         else:
@@ -51,14 +50,6 @@ def accuracy_threshold(Y_hat, Y, values, metric_name="mesure", num_thresholds=10
         plt.ylabel("Accuracy (Y_hat = Y)")
         plt.title(f"Accuracy en fonction du seuil de {metric_name}")
         plt.legend()
-        plt.grid(True)
-        plt.show()
-        # Affiche le nombre d'échantillons sélectionnés pour chaque seuil
-        plt.figure(figsize=(7, 2))
-        plt.plot(thresholds, counts, color='gray')
-        plt.xlabel(f"Seuil sur {metric_name}")
-        plt.ylabel("Nb échantillons sélectionnés")
-        plt.title("Nombre d'échantillons sélectionnés selon le seuil")
         plt.grid(True)
         plt.show()
 
