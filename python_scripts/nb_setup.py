@@ -33,7 +33,7 @@ from torch.utils.data import (
 )
 
 from torchvision import datasets, transforms, models
-from torchvision.models import VGG16_Weights
+from torchvision.models import VGG16_Weights, ResNet18_Weights, resnet18
 
 # --- Utilities ---
 from tqdm import tqdm
@@ -52,9 +52,10 @@ if module_path not in sys.path:
 
 from python_scripts.sgp_utils import *
 from python_scripts.preprocessing import *
+from python_scripts.mcdropout import *     # MC Dropout utilities
 from python_scripts.plotting import *
 from python_scripts.math_utils import *
-from python_scripts import plotting  # optional explicit module import
+from python_scripts import plotting
 
 # --- Config ---
 warnings.filterwarnings("ignore")
