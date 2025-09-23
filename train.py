@@ -1,6 +1,7 @@
 import torch
 import torch.nn as nn
 import torch.optim as optim
+from tqdm import tqdm
 
 def evaluate(model, dataloader, device):
     model.eval()
@@ -22,7 +23,7 @@ def train_model(model, trainloader, valloader, device, epochs, save_path):
     optimizer = optim.Adam(model.parameters(), lr=0.001)
     
     best_val_acc = 0
-    for epoch in range(epochs):
+    for epoch in tqdm(range(epochs)):
         model.train()
         running_loss = 0.0
         for inputs, targets in trainloader:
