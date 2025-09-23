@@ -3,11 +3,20 @@ import torchvision
 import torchvision.transforms as transforms
 from torch.utils.data import DataLoader, random_split
 
-def load_cifar10(batch_size=128, val_ratio=0.1):
-    # Images 32x32, normalisation CIFAR10
+def load_resnet18(batch_size=128, val_ratio=0.1):
+    """
+    Charge les DataLoaders pour CIFAR10, avec un prétraitement adapté à ResNet18 pré-entraîné sur ImageNet :
+    - Redimensionne les images à 224x224 (taille attendue par ResNet18 standard).
+    - Applique la normalisation ImageNet.
+    - Retourne les DataLoaders pour train, validation et test, ainsi que la liste des classes CIFAR10.
+    - N'instancie ni ne retourne de modèle ResNet18.
+    """
+
+    # Images 224x224, normalisation ImageNet pour ResNet18 pré-entraîné
     transform = transforms.Compose([
+        transforms.Resize(224),  # ResNet18 attend 224x224
         transforms.ToTensor(),
-        transforms.Normalize((0.5, 0.5, 0.5), (0.5, 0.5, 0.5))
+        transforms.Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225])
     ])
 
     trainset = torchvision.datasets.CIFAR10(root='./data', train=True, download=True, transform=transform)
