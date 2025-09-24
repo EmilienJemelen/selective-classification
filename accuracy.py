@@ -114,19 +114,27 @@ def monotonic_rearrangement(arr, thresholds=None, accuracies=None, color='deeppi
     return arr # renvoie le tableau corrigé
 
 
-def monotonicity_penalty(thresholds, accuracies, corrected_accuracies):
+def monotonicity_penalty(thresholds, accuracies, method='isotonic'):
     """
     Calcule la somme des aires de violation de monotonie entre la courbe d'accuracy
     et sa version monotone (isotone ou réarrangement).
+    method : 'isotonic' ou 'rearrangement'
     """
     mask = ~np.isnan(accuracies)
     x = thresholds[mask]
     y1 = accuracies[mask]
-    # Si la taille ne correspond pas, on suppose que corrected_accuracies est déjà réduit
-    if len(corrected_accuracies) == len(x):
-        y2 = corrected_accuracies
+
+    if method == 'isotonic':
+        iso_reg = IsotonicRegression(increasing=False, out_of_bounds='clip')
+        y2 = iso_reg.fit_transform(x, y1)
+    elif method == 'rearrangement':
+        arr = y1.copy()
+        for i in range(1, len(arr)):
+            if arr[i] > arr[i-1]:
+                arr[i] = arr[i-1]
+        y2 = arr
     else:
-        y2 = corrected_accuracies[mask]
-    penalty = np.trapz(np.maximum(0, y1 - y2), x) # seulement quand la courbe originale est au-dessus de la courbe corrigée
-    penalty = np.trapz(np.abs(y1 - y2), x) # aire totale entre les deux courbes
+        raise ValueError("method doit être 'isotonic' ou 'rearrangement'")
+
+    penalty = np.trapz(np.abs(y1 - y2), x)  # aire totale entre les deux courbes
     return penalty
