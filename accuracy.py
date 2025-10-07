@@ -29,6 +29,7 @@ def accuracy_threshold(Y_hat, Y, values, metric_name="mesure", num_thresholds=10
 
     thresholds = np.linspace(values.min(), values.max(), num_thresholds)
     accuracies = []
+
     counts = []  # Ajout pour compter les échantillons sélectionnés
 
     for thresh in thresholds:
@@ -49,6 +50,8 @@ def accuracy_threshold(Y_hat, Y, values, metric_name="mesure", num_thresholds=10
         plt.xlabel(f"Seuil sur {metric_name}")
         plt.ylabel("Accuracy (Y_hat = Y)")
         plt.title(f"Accuracy en fonction du seuil de {metric_name}")
+        plt.xlim(0, 1)
+        plt.ylim(0, 1)
         plt.legend()
         plt.grid(True)
         plt.show()
@@ -77,6 +80,8 @@ def isotonic_regression(thresholds, accuracies, color='seagreen', display=True):
         plt.axhline(y=min_iso, color='red', linestyle='--', label=f"Min régression isotone = {min_iso:.4f}")
         plt.xlabel('Seuil')
         plt.ylabel('Accuracy')
+        plt.xlim(0, 1)
+        plt.ylim(0, 1)
         plt.title("Correction monotone de la fonction d'accuracy par régression isotone")
         plt.legend()
         plt.grid(True)
@@ -106,6 +111,8 @@ def monotonic_rearrangement(arr, thresholds=None, accuracies=None, color='deeppi
         plt.axhline(y=min_val, color='red', linestyle='--', label=f"Min = {min_val:.4f}")
         plt.xlabel('Seuil')
         plt.ylabel('Accuracy')
+        plt.xlim(0, 1)
+        plt.ylim(0, 1)
         plt.title("Correction monotone de l'accuracy par réarrangement monotone")
         plt.legend()
         plt.grid(True)
