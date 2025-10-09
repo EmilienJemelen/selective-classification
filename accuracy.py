@@ -56,7 +56,7 @@ def accuracy_threshold(Y_hat, Y, values, metric_name="mesure", num_quantiles=100
         plt.ylabel("Accuracy normalisée")
         plt.title(f"Accuracy en fonction du quantile de {metric_name}")
         plt.xlim(0, 1)
-        plt.ylim(0, 1)
+        plt.ylim(0, 1.1)
         plt.legend()
         plt.grid(True)
         plt.show()
