@@ -12,25 +12,25 @@ import matplotlib.pyplot as plt
 from sklearn.isotonic import IsotonicRegression
 import pandas as pd 
 
+# on regarde la distribution des incertitudes et on regarde le quantile des seuils : 2% des seuils d'incertitude etc 
+# y reste entre 0 et 1 : je fais une transformation linéaire pour que y soit entre 0 et 1, si le minimum est 0.2, je fais y = (y - 0.2) / (1 - 0.2) 
+# l'étape de transformation de y se fait à la fin du calcul des quantiles
+# pour x : pour quantile in 1 à 100 (boucle for), on calcule le quantile d'ordre q des incertitudes, on calcule l'accuracy sur les échantillons dont l'incertitude est inférieure à ce quantile (q%), on trace le graphe
 
-def accuracy_threshold(Y_hat, Y, values, metric_name="mesure", num_thresholds=1000, color='blue', display=True):
+def accuracy_threshold(Y_hat, Y, values, metric_name="mesure", num_quantiles=100, color='blue', display=True):
     """
-    Trace la courbe accuracy en fonction du seuil sur une métrique donnée.
-    Y_hat : prédictions (tensor ou array)
-    Y : labels réels (tensor ou array)
-    values : vecteur par échantillon de la métrique utilisée comme seuil (variance, predictive entropy, etc.)
-    metric_name : nom de la métrique (sera utilisé dans le titre)
-    num_thresholds : nombre de seuils à tester
-    display : si True, affiche la courbe, sinon ne l'affiche pas
+    Trace la courbe accuracy en fonction du quantile sur une métrique donnée.
+    Les abscisses correspondent aux quantiles (de 0 à 1), donc x=0.1 signifie 10% des valeurs les plus faibles.
+    L'ordonnée (accuracy) est normalisée linéairement entre 0 et 1 (min=0).
+    Renvoie quantiles, thresholds (valeurs de la métrique correspondant aux quantiles) et accuracies (originales).
     """
     if torch.is_tensor(Y_hat): Y_hat = Y_hat.cpu().numpy()
     if torch.is_tensor(Y): Y = Y.cpu().numpy()
     if torch.is_tensor(values): values = values.cpu().numpy()
 
-    thresholds = np.linspace(values.min(), values.max(), num_thresholds)
+    quantiles = np.linspace(0, 1, num_quantiles)
+    thresholds = np.quantile(values, quantiles)
     accuracies = []
-
-    counts = []  # Ajout pour compter les échantillons sélectionnés
 
     for thresh in thresholds:
         mask = values < thresh
@@ -41,94 +41,131 @@ def accuracy_threshold(Y_hat, Y, values, metric_name="mesure", num_thresholds=10
             accuracies.append(acc)
 
     accuracies = np.array(accuracies)
-    min_accuracy = np.nanmin(accuracies)
+    # Normalisation linéaire des accuracies entre 0 et 1, min=0
+    min_acc = np.nanmin(accuracies)
+    max_acc = np.nanmax(accuracies)
+    if max_acc > min_acc:
+        accuracies_norm = (accuracies - min_acc) / (max_acc - min_acc)
+    else:
+        accuracies_norm = accuracies.copy()
 
     if display:
         plt.figure(figsize=(7, 4))
-        plt.plot(thresholds, accuracies, color=color, linewidth=1.5)
-        plt.axhline(y=min_accuracy, color='red', linestyle='--', label=f"Accuracy min = {min_accuracy:.4f}")
-        plt.xlabel(f"Seuil sur {metric_name}")
-        plt.ylabel("Accuracy (Y_hat = Y)")
-        plt.title(f"Accuracy en fonction du seuil de {metric_name}")
+        plt.plot(quantiles, accuracies_norm, color=color, linewidth=1.5, label="Accuracy normalisée")
+        plt.xlabel(f"Quantiles de {metric_name} (proportion d'échantillons inclus)")
+        plt.ylabel("Accuracy normalisée")
+        plt.title(f"Accuracy en fonction du quantile de {metric_name}")
         plt.xlim(0, 1)
         plt.ylim(0, 1)
         plt.legend()
         plt.grid(True)
         plt.show()
-
-    return thresholds, accuracies
-
-
-def isotonic_regression(thresholds, accuracies, color='seagreen', display=True):
+    return quantiles, thresholds, accuracies  # retourne les quantiles, thresholds et accuracy originale (y)
+    
+def isotonic_regression(quantiles, accuracies, color='seagreen', display=True):
     """
-    Affiche la courbe d'accuracy originale et sa correction isotone décroissante.
+    Affiche la courbe d'accuracy originale normalisée, sa correction isotone décroissante normalisée,
+    et colore l'aire entre les deux courbes en fonction des quantiles.
+    Les abscisses (quantiles) sont comprises entre 0 et 1.
     display : si True, affiche la courbe, sinon ne l'affiche pas
     """
-    mask = ~np.isnan(accuracies) # ignorer les NaN
+    mask = ~np.isnan(accuracies)  # ignorer les NaN
     if mask.sum() == 0:
         print("Pas de valeurs valides pour la régression isotone.")
         return None
-    iso_reg = IsotonicRegression(increasing=False, out_of_bounds='clip') # décroissante, appelée fonction antitone 
-    iso_accuracies = iso_reg.fit_transform(thresholds[mask], accuracies[mask]) # renvoie les valeurs corrigées aux seuils valides uniquement (sans NaN)
+
+    # Normalisation linéaire des accuracies entre 0 et 1, min=0
+    acc = accuracies[mask]
+    min_acc = np.nanmin(acc)
+    max_acc = np.nanmax(acc)
+    if max_acc > min_acc:
+        acc_norm = (acc - min_acc) / (max_acc - min_acc)
+    else:
+        acc_norm = acc.copy()
+
+    iso_reg = IsotonicRegression(increasing=False, out_of_bounds='clip')
+    iso_accuracies = iso_reg.fit_transform(quantiles[mask], acc)
+    # Normalisation de la courbe isotone sur la même échelle
+    min_iso = np.nanmin(iso_accuracies)
+    max_iso = np.nanmax(iso_accuracies)
+    if max_iso > min_iso:
+        iso_norm = (iso_accuracies - min_iso) / (max_iso - min_iso)
+    else:
+        iso_norm = iso_accuracies.copy()
 
     if display:
         plt.figure(figsize=(7, 4))
-        plt.plot(thresholds, accuracies, label='Accuracy originale', color=color, linewidth=1.5)
-        plt.plot(thresholds[mask], iso_accuracies, label='Accuracy monotone (régression isotone)', color='brown', linewidth=1.5)
-        plt.fill_between(thresholds[mask], iso_accuracies, accuracies[mask], color='red', alpha=0.3, label='Violations de monotonie')
-        min_iso = np.min(iso_accuracies)
-        plt.axhline(y=min_iso, color='red', linestyle='--', label=f"Min régression isotone = {min_iso:.4f}")
-        plt.xlabel('Seuil')
-        plt.ylabel('Accuracy')
+        plt.plot(quantiles[mask], acc_norm, label='Accuracy normalisée', color='brown', linewidth=1.5)
+        plt.plot(quantiles[mask], iso_norm, label='Régression isotone normalisée', color=color, linewidth=1.5)
+        plt.fill_between(quantiles[mask], acc_norm, iso_norm, color='red', alpha=0.3, label="Aire entre les courbes")
+        plt.xlabel("Quantiles")
+        plt.ylabel("Accuracy normalisée")
         plt.xlim(0, 1)
         plt.ylim(0, 1)
-        plt.title("Correction monotone de la fonction d'accuracy par régression isotone")
+        plt.title("Accuracy normalisée et régression isotone")
         plt.legend()
         plt.grid(True)
         plt.show()
 
-    return iso_accuracies # retourne les valeurs corrigées
+    return iso_accuracies
 
 
-def monotonic_rearrangement(arr, thresholds=None, accuracies=None, color='deeppink', display=True):
+def monotonic_rearrangement(arr, quantiles=None, accuracies=None, color='deeppink', display=True):
     """
-    Applique le réarrangement monotone décroissant à la liste arr.
-    Si thresholds et accuracies sont fournis, affiche la comparaison avant/après
+    Applique le réarrangement monotone décroissant à la liste arr (en fonction des quantiles).
+    Si quantiles et accuracies sont fournis, affiche la comparaison avant/après, normalisées, et colore l'aire entre les deux courbes.
     display : si True, affiche la courbe, sinon ne l'affiche pas
     """
     arr = np.array(arr).copy()
     for i in range(1, len(arr)):
-        if np.isnan(arr[i-1]): # ignorer NaN
+        if np.isnan(arr[i-1]):
             continue
-        if arr[i] > arr[i-1]: # si la valeur courante est plus grande que la précédente, on la remplace
+        if arr[i] > arr[i-1]:
             arr[i] = arr[i-1]
-    if display and thresholds is not None and accuracies is not None:
+
+    if display and quantiles is not None and accuracies is not None:
+        # Normalisation linéaire des accuracies entre 0 et 1, min=0
+        mask = ~np.isnan(accuracies)
+        acc = np.array(accuracies)[mask]
+        q = np.array(quantiles)[mask]
+        arr_masked = arr[mask]
+
+        min_acc = np.nanmin(acc)
+        max_acc = np.nanmax(acc)
+        if max_acc > min_acc:
+            acc_norm = (acc - min_acc) / (max_acc - min_acc)
+        else:
+            acc_norm = acc.copy()
+
+        min_arr = np.nanmin(arr_masked)
+        max_arr = np.nanmax(arr_masked)
+        if max_arr > min_arr:
+            arr_norm = (arr_masked - min_arr) / (max_arr - min_arr)
+        else:
+            arr_norm = arr_masked.copy()
+
         plt.figure(figsize=(7, 4))
-        plt.plot(thresholds, accuracies, label='Accuracy originale', color=color, linewidth=1.5)
-        plt.plot(thresholds, arr, label='Accuracy monotone (réarrangement)', color='brown', linewidth=1.5)
-        plt.fill_between(thresholds, arr, accuracies, color='red', alpha=0.3, label='Violations de monotonie')
-        min_val = np.nanmin(arr)
-        plt.axhline(y=min_val, color='red', linestyle='--', label=f"Min = {min_val:.4f}")
-        plt.xlabel('Seuil')
-        plt.ylabel('Accuracy')
+        plt.plot(q, acc_norm, label='Accuracy normalisée', color='brown', linewidth=1.5)
+        plt.plot(q, arr_norm, label='Réarrangement monotone normalisé', color=color, linewidth=1.5)
+        plt.fill_between(q, acc_norm, arr_norm, color='red', alpha=0.3, label="Aire entre les courbes")
+        plt.xlabel("Quantiles")
+        plt.ylabel("Accuracy normalisée")
         plt.xlim(0, 1)
         plt.ylim(0, 1)
-        plt.title("Correction monotone de l'accuracy par réarrangement monotone")
+        plt.title("Accuracy normalisée et réarrangement monotone")
         plt.legend()
         plt.grid(True)
         plt.show()
-        
-    return arr # renvoie le tableau corrigé
+    return arr
 
-
-def monotonicity_penalty(thresholds, accuracies, method='isotonic'):
+def monotonicity_penalty(quantiles, accuracies, method='isotonic'):
     """
     Calcule la somme des aires de violation de monotonie entre la courbe d'accuracy
-    et sa version monotone (isotone ou réarrangement).
+    et sa version monotone (isotone ou réarrangement), en fonction des quantiles.
     method : 'isotonic' ou 'rearrangement'
     """
     mask = ~np.isnan(accuracies)
-    x = thresholds[mask]
+    x = quantiles[mask]
     y1 = accuracies[mask]
 
     if method == 'isotonic':
