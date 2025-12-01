@@ -26,6 +26,10 @@ def mc_predict_mean_probs(model, X, T=1000, verbose=True):
         print(f"Temps total: {elapsed:.2f} s  |  Temps moyen par passe: {elapsed/T:.4f} s")
     return probs_mc.mean(0), elapsed
 
+def predictive_entropy_multi_class(mean_probs):
+    mean_probs = torch.clamp(mean_probs, min=1e-12)  # éviter log(0)
+    return -(mean_probs * torch.log(mean_probs)).sum(dim=1)  # entropie par échantillon
+
 def generate_mc_outputs(model, X, T=1000, metrics=["mc_estimate"], labels=None, verbose=True):
     """
     Effectue T passes Monte Carlo Dropout sur le modèle pour le batch X,
@@ -92,6 +96,11 @@ def generate_mc_outputs(model, X, T=1000, metrics=["mc_estimate"], labels=None, 
                           (1 - max_probs) * ((1 - max_probs + 1e-12).log()))
             results["predictive_entropy_max_mean"] = entropies.mean().item()
             results["predictive_entropy_max"] = entropies
+
+        elif metric == "predictive_entropy_multi":  # entropie prédictive multi-classe
+            entropies = predictive_entropy_multi_class(mean_probs)
+            results["predictive_entropy_multi_mean"] = entropies.mean().item()
+            results["predictive_entropy_multi"] = entropies
 
         elif metric == "relative_norm":
             if labels is None:
