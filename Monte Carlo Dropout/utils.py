@@ -27,7 +27,7 @@ def mc_predict_mean_probs(model, X, T=1000, verbose=True):
     return probs_mc.mean(0), elapsed
 
 def predictive_entropy_multi_class(mean_probs):
-    mean_probs = torch.clamp(mean_probs, min=1e-12)  # éviter log(0)
+    mean_probs = torch.clamp(mean_probs, min=1e-12, max=1-1e-12)  # éviter log(0)
     return -(mean_probs * torch.log(mean_probs)).sum(dim=1)  # entropie par échantillon
 
 def generate_mc_outputs(model, X, T=1000, metrics=["mc_estimate"], labels=None, verbose=True):
@@ -92,15 +92,26 @@ def generate_mc_outputs(model, X, T=1000, metrics=["mc_estimate"], labels=None, 
         elif metric == "predictive_entropy_max": # PE de la probabilité max (toutes classes confondues)
             max_probs, _ = mean_probs.max(dim=1)  # shape [batch]
             # entropie binaire associée à p_max
-            entropies = -(max_probs * (max_probs + 1e-12).log() +
+            entropies_max = -(max_probs * (max_probs + 1e-12).log() +
                           (1 - max_probs) * ((1 - max_probs + 1e-12).log()))
-            results["predictive_entropy_max_mean"] = entropies.mean().item()
-            results["predictive_entropy_max"] = entropies
+            results["predictive_entropy_max_mean"] = entropies_max.mean().item()
+            results["predictive_entropy_max"] = entropies_max
 
-        elif metric == "predictive_entropy_multi":  # entropie prédictive multi-classe
-            entropies = predictive_entropy_multi_class(mean_probs)
-            results["predictive_entropy_multi_mean"] = entropies.mean().item()
-            results["predictive_entropy_multi"] = entropies
+        elif metric == "predictive_entropy_multi_predicted":
+            # Entropie complète de la distribution moyenne
+            entropies_multi_pred = predictive_entropy_multi_class(mean_probs)
+            results["predictive_entropy_multi_predicted_mean"] = entropies_multi_pred.mean().item()
+            results["predictive_entropy_multi_predicted"] = entropies_multi_pred
+
+        elif metric == "predictive_entropy_multi_max":
+            # Entropie MOYENNE des entropies par passe (plus sensible aux variations)
+            entropies_per_pass = torch.zeros(all_probs.size(1), device=all_probs.device)
+            for t in range(T):
+                entropies_per_pass += predictive_entropy_multi_class(all_probs[t])
+            entropies_multi_max = entropies_per_pass / T
+            results["predictive_entropy_multi_max_mean"] = entropies_multi_max.mean().item()
+            results["predictive_entropy_multi_max"] = entropies_multi_max
+
 
         elif metric == "relative_norm":
             if labels is None:
