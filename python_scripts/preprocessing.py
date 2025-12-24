@@ -36,7 +36,7 @@ def filter_classes(dataset, allowed_classes):
 
 
 def binarize_labels(dataset):
-    """ 
+    """
     Binarize labels: 1 if airplane (class index 0), else 0
     """
     dataset.targets = [1 if label == 0 else 0 for label in dataset.targets]
@@ -56,37 +56,41 @@ def get_balanced_sampler(labels):
     class_sample_counts = torch.bincount(torch.tensor(labels))
     weights = 1.0 / class_sample_counts.float()
     sample_weights = [weights[label] for label in labels]
-    sampler = WeightedRandomSampler(sample_weights, num_samples=len(sample_weights), replacement=True)
+    sampler = WeightedRandomSampler(
+        sample_weights, num_samples=len(sample_weights), replacement=True
+    )
     return sampler
 
 
 def prepare_sgp_dico(dataloader, model, device, T):
     """
     Prepare dataframe containing exactly the required features to train sgp module
-    true class of each sample, model predicted class, 
-    softmax response (kappa) or any other confidence function output 
+    true class of each sample, model predicted class,
+    softmax response (kappa) or any other confidence function output
     """
-    sgp_dico = {'y_true' : np.array([]),
-                'y_pred' : np.array([]),
-                'kappa' : np.array([])}
+    sgp_dico = {"y_true": np.array([]), "y_pred": np.array([]), "kappa": np.array([])}
     model.eval()
     with torch.no_grad():
         for images, labels in tqdm(dataloader):
             images, labels = images.to(device), labels.to(device)
             batch_preds = model(images)
-            softmax_values = F.softmax(batch_preds/T, dim=1) 
+            softmax_values = F.softmax(batch_preds / T, dim=1)
             softmax_responses = torch.max(softmax_values, dim=1)[0].cpu().numpy()
             _, predicted_classes = torch.max(batch_preds, 1)
             predicted_classes = predicted_classes.cpu().numpy()
 
-            sgp_dico['y_true'] = np.concatenate((sgp_dico['y_true'], labels.cpu().numpy()))
-            sgp_dico['y_pred'] = np.concatenate((sgp_dico['y_pred'], predicted_classes))
-            sgp_dico['kappa'] = np.concatenate((sgp_dico['kappa'], softmax_responses))
+            sgp_dico["y_true"] = np.concatenate(
+                (sgp_dico["y_true"], labels.cpu().numpy())
+            )
+            sgp_dico["y_pred"] = np.concatenate((sgp_dico["y_pred"], predicted_classes))
+            sgp_dico["kappa"] = np.concatenate((sgp_dico["kappa"], softmax_responses))
 
     return sgp_dico
 
 
-def generate_imbalanced_datasets(dataset, proportions, label_col='y_true', seed=0, fixed=False):
+def generate_imbalanced_datasets(
+    dataset, proportions, label_col="y_true", seed=0, fixed=False
+):
     """
     Create datasets with specified class-1 proportions.
 
@@ -125,7 +129,9 @@ def generate_imbalanced_datasets(dataset, proportions, label_col='y_true', seed=
     for p in proportions:
         if p is None:
             # Just return a shuffled copy of the original (still fixed-size).
-            datasets.append(dataset.sample(frac=1, random_state=rng).reset_index(drop=True))
+            datasets.append(
+                dataset.sample(frac=1, random_state=rng).reset_index(drop=True)
+            )
             continue
 
         if not (0 < p < 1):
@@ -140,24 +146,34 @@ def generate_imbalanced_datasets(dataset, proportions, label_col='y_true', seed=
 
             # Sample positives
             if N1_target <= N1:
-                df_pos_sampled = df_pos.sample(n=N1_target, replace=False, random_state=rng)
+                df_pos_sampled = df_pos.sample(
+                    n=N1_target, replace=False, random_state=rng
+                )
             else:
                 # Oversample with replacement to reach target
-                df_pos_sampled = df_pos.sample(n=N1_target, replace=True, random_state=rng)
+                df_pos_sampled = df_pos.sample(
+                    n=N1_target, replace=True, random_state=rng
+                )
 
             # Sample negatives
             if N0_target <= N0:
-                df_neg_sampled = df_neg.sample(n=N0_target, replace=False, random_state=rng)
+                df_neg_sampled = df_neg.sample(
+                    n=N0_target, replace=False, random_state=rng
+                )
             else:
                 # Oversample with replacement to reach target
-                df_neg_sampled = df_neg.sample(n=N0_target, replace=True, random_state=rng)
+                df_neg_sampled = df_neg.sample(
+                    n=N0_target, replace=True, random_state=rng
+                )
 
             df_combined = pd.concat([df_pos_sampled, df_neg_sampled], axis=0)
 
         else:
             # Original adaptive downsampling behavior (sizes may differ from N_orig).
             if N1 == 0 or N0 == 0:
-                raise ValueError("Both classes must be present in the input dataset for adaptive mode.")
+                raise ValueError(
+                    "Both classes must be present in the input dataset for adaptive mode."
+                )
 
             # Target total size to achieve proportion p of class-1 by downsampling majority.
             N_total = int(N1 / p)
@@ -165,16 +181,22 @@ def generate_imbalanced_datasets(dataset, proportions, label_col='y_true', seed=
 
             if N0_required <= N0:
                 # Downsample class-0
-                df_neg_sampled = df_neg.sample(n=N0_required, replace=False, random_state=rng)
+                df_neg_sampled = df_neg.sample(
+                    n=N0_required, replace=False, random_state=rng
+                )
                 df_combined = pd.concat([df_pos, df_neg_sampled], axis=0)
             else:
                 # Not enough class-0s — fallback to downsampling class-1 based on full dataset size
                 N1_required = int(p * (N0 + N1))
-                df_pos_sampled = df_pos.sample(n=min(N1_required, N1), replace=False, random_state=rng)
+                df_pos_sampled = df_pos.sample(
+                    n=min(N1_required, N1), replace=False, random_state=rng
+                )
                 df_combined = pd.concat([df_pos_sampled, df_neg], axis=0)
 
         # Shuffle and reset index
-        df_shuffled = df_combined.sample(frac=1, random_state=rng).reset_index(drop=True)
+        df_shuffled = df_combined.sample(frac=1, random_state=rng).reset_index(
+            drop=True
+        )
         datasets.append(df_shuffled)
 
     return datasets
@@ -190,17 +212,16 @@ def compute_mean_std(dataset_root):
     Returns:
         Tuple[torch.Tensor, torch.Tensor]: Mean and standard deviation tensors for the dataset (per channel).
     """
-    transform = transforms.Compose([
-        transforms.Resize((512, 512)),
-        transforms.ToTensor()
-    ])
+    transform = transforms.Compose(
+        [transforms.Resize((512, 512)), transforms.ToTensor()]
+    )
 
     dataset = ImageFolder(root=dataset_root, transform=transform)
     loader = DataLoader(dataset, batch_size=10, shuffle=False, num_workers=2)
 
-    mean = 0.
-    std = 0.
-    nb_samples = 0.
+    mean = 0.0
+    std = 0.0
+    nb_samples = 0.0
 
     for data, _ in tqdm(loader):
         batch_samples = data.size(0)
@@ -214,7 +235,9 @@ def compute_mean_std(dataset_root):
     return mean, std
 
 
-def split_and_balance_dataset(root, transform=None, seed=0, train_size=0.4, val_size=0.1):
+def split_and_balance_dataset(
+    root, transform=None, seed=0, train_size=0.4, val_size=0.1
+):
     """
     Split a binary image classification dataset into train (40%), val (10%), and test (50%) subsets,
     then oversample minority class in train and val sets for balance.
@@ -244,8 +267,8 @@ def split_and_balance_dataset(root, transform=None, seed=0, train_size=0.4, val_
     n_val = int(val_size * n_total)
 
     train_indices = indices[:n_train]
-    val_indices = indices[n_train:n_train + n_val]
-    test_indices = indices[n_train + n_val:]
+    val_indices = indices[n_train : n_train + n_val]
+    test_indices = indices[n_train + n_val :]
 
     # Helper to oversample a binary split
     def oversample(indices_subset):
@@ -260,10 +283,9 @@ def split_and_balance_dataset(root, transform=None, seed=0, train_size=0.4, val_
             majority, minority = class1_indices, class0_indices
 
         # Oversample minority to match majority
-        oversampled_minority = resample(minority,
-                                        replace=True,
-                                        n_samples=len(majority),
-                                        random_state=seed)
+        oversampled_minority = resample(
+            minority, replace=True, n_samples=len(majority), random_state=seed
+        )
         balanced_indices = majority + oversampled_minority
         rng.shuffle(balanced_indices)
         return balanced_indices
@@ -291,7 +313,7 @@ def count_labels(dataset):
         dict: A dictionary mapping class labels (0 and 1) to their respective counts.
     """
     targets = []
-    
+
     # Handle Subset datasets
     if isinstance(dataset, Subset):
         targets = [dataset.dataset.targets[i] for i in dataset.indices]
@@ -322,13 +344,13 @@ def compute_all_interval_intersections(interval_dict):
     # Generate all combinations: one interval from each key
     keys = list(interval_dict.keys())
     interval_lists = [interval_dict[key] for key in keys]
-    
+
     intersections = []
     for combo in product(*interval_lists):
         inter = interval_intersection(combo)
         if inter is not None:
             intersections.append(inter)
-    
+
     return intersections
 
 
@@ -342,11 +364,13 @@ def best_theta(intersection_intervals):
     Returns:
         float: The minimum theta found, or np.inf if input is invalid/empty.
     """
-    l=0
+    l = 0
     m = np.inf
     try:
         while l < len(intersection_intervals):
-            if intersection_intervals[l][0] < m: # looking for smallest theta through all the intervals 
+            if (
+                intersection_intervals[l][0] < m
+            ):  # looking for smallest theta through all the intervals
                 m = intersection_intervals[l][0]
             l += 1
     except TypeError:
@@ -360,11 +384,11 @@ def get_segments(x, condition_mask):
 
     Parameters:
         x (list): A list of values (e.g., time or index values).
-        condition_mask (list of bool): A boolean list of the same length as `x`, 
+        condition_mask (list of bool): A boolean list of the same length as `x`,
                                        indicating which elements satisfy the condition.
 
     Returns:
-        list of tuples: A list of (start, end) pairs representing segments where 
+        list of tuples: A list of (start, end) pairs representing segments where
                         `condition_mask` is True.
     """
     segments = []
@@ -383,7 +407,7 @@ def get_segments(x, condition_mask):
 
 
 def train_test_split(df, seed, p_train=0.75):
-    train_df = df.sample(frac=p_train, random_state=seed)   # 75% for bounds fitting
+    train_df = df.sample(frac=p_train, random_state=seed)  # 75% for bounds fitting
     test_df = df.drop(train_df.index)
-    train_df = train_df.sort_values('kappa', ascending=True).reset_index(drop=True)
+    train_df = train_df.sort_values("kappa", ascending=True).reset_index(drop=True)
     return train_df, test_df

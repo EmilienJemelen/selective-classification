@@ -140,7 +140,7 @@ def bound(b, selected_samples, delta, metric, n):
         B = 1 - b / abs(upper_bound_denominator(metric, selected_samples, delta, n))
     if (B >= 1) or (
         B <= 0
-    ):  # should not happen, but no proof can be given that it cannot happen in pathological cases
+    ):  # should not happen, but no proof can be given that it cannot happen in pathological datasets
         return np.nan
     else:
         return B
@@ -671,7 +671,7 @@ def mean_abs_diff(u, v):
     return np.mean(diffs)
 
 
-def ABC(ds, metric, theta_min=0.5, theta_max=1, k2=K2, delta=1e-3):
+def ABC(ds, metric, theta_min=0.5, theta_max=1, k2=K2, delta=5e-3):
     """Compute average absolute gap between bound and test metric vs θ.
 
     Args:
@@ -701,3 +701,36 @@ def ABC(ds, metric, theta_min=0.5, theta_max=1, k2=K2, delta=1e-3):
             emp_metrics.append(np.nan)
 
     return mean_abs_diff(bounds, emp_metrics)
+
+
+def our_bound(selected_samples, metric, delta, n):
+
+    loss = "FP" if (metric in ["FPR", "PPV"]) else "FN"
+    selected_errs_count = emp_errs_count(selected_samples, loss=loss)
+    b = B_star(delta, selected_errs_count, selected_samples.shape[0])
+    B = bound(b, selected_samples, delta, metric, n=n)
+    return B
+
+
+def eq11_bound(selected_samples, metric, delta):
+
+    if metric == "FPR":
+        a = (selected_samples.y_pred * (1 - selected_samples.y_true)).sum() / (
+            1 - selected_samples.y_true
+        ).sum()
+        b = np.sqrt(-2 * np.log(delta) / (1 - selected_samples.y_true).sum())
+
+    elif metric == "FNR":
+        a = (
+            (1 - selected_samples.y_pred) * selected_samples.y_true
+        ).sum() / selected_samples.y_true.sum()
+        b = np.sqrt(-2 * np.log(delta) / selected_samples.y_true.sum())
+
+    else:  # PPV
+        a = (
+            selected_samples.y_pred * selected_samples.y_true
+        ).sum() / selected_samples.y_pred.sum()
+        b = np.sqrt(-2 * np.log(delta) / selected_samples.y_pred.sum())
+        return a - b
+
+    return a + b
