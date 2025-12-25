@@ -704,7 +704,18 @@ def ABC(ds, metric, theta_min=0.5, theta_max=1, k2=K2, delta=5e-3):
 
 
 def our_bound(selected_samples, metric, delta, n):
+    """
+    Compute our guaranteed conditional metric bound (to be compared to external reference)
 
+    Args:
+        selected_samples: samples with confidence higher than threshold
+        metric: one of the selective metrics 'standard', 'FPR', 'FNR' etc...
+        delta: probability control
+        n: size of Sn, the original dataset
+
+    Returns:
+        float: bound from proposition 2-3
+    """
     loss = "FP" if (metric in ["FPR", "PPV"]) else "FN"
     selected_errs_count = emp_errs_count(selected_samples, loss=loss)
     b = B_star(delta, selected_errs_count, selected_samples.shape[0])
@@ -713,7 +724,17 @@ def our_bound(selected_samples, metric, delta, n):
 
 
 def eq11_bound(selected_samples, metric, delta):
+    """
+    Compute conditional metric bound with Eq. (11) from (Balsubramani et al., 2019)
 
+    Args:
+        selected_samples: samples with confidence higher than threshold
+        metric: 'FPR', 'FNR' etc..
+        delta: probability control
+
+    Returns:
+        float: bound from Eq. (11)
+    """
     if metric == "FPR":
         a = (selected_samples.y_pred * (1 - selected_samples.y_true)).sum() / (
             1 - selected_samples.y_true

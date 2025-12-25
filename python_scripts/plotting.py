@@ -480,7 +480,9 @@ def two_metrics_bounds(
 
 
 def lines():
-
+    """
+    List of standardized plot parameters used in experiments notebooks
+    """
     # Softmax Response (SR) by confidence threshold theta
     lines_list_1_SR = [
         {

@@ -407,7 +407,15 @@ def get_segments(x, condition_mask):
 
 
 def train_test_split(df, seed, p_train=0.75):
-    train_df = df.sample(frac=p_train, random_state=seed)  # 75% for bounds fitting
+    """
+    Standard dataset split function
+
+    Args:
+        df: dataset to split (pandas)
+        seed: int for reproducible results
+        p_train: proportion of df going to train set
+    """
+    train_df = df.sample(frac=p_train, random_state=seed)
     test_df = df.drop(train_df.index)
     train_df = train_df.sort_values("kappa", ascending=True).reset_index(drop=True)
     return train_df, test_df
