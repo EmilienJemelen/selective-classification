@@ -30,6 +30,7 @@ from python_scripts.preprocessing import *
 # Parameters k1 and k2 from the paper (see Algo 1-2 resp.)
 K1 = 6
 K2 = 50
+DELTA = 5e-3
 
 
 def emp_errs_count(samples, loss="standard"):
@@ -107,7 +108,7 @@ def upper_bound_denominator(metric, selected_samples, delta, n):
     Returns:
         float: Denominator value.
     """
-    d2 = np.sqrt(-n * np.log(delta / 2)) / selected_samples.shape[0]
+    d2 = np.sqrt(-n * np.log(delta / 4)) / selected_samples.shape[0]
     if metric == "PPV":
         d1 = selected_samples.y_pred.sum() / selected_samples.shape[0]
     else:
@@ -248,8 +249,13 @@ def sgp_greedy_search(delta, r_star, Sn, metric, theta_min=0.5, theta_max=1, k2=
         if selected_errs_count == 0:
             # no mistake on selected subset => no mistake as next iters, so b* is stuck at 1-delta^(1/n)
             return {}
-
-        b = B_star(delta / k2, selected_errs_count, selected_samples.shape[0])
+        b = (
+            B_star(delta / k2, selected_errs_count, selected_samples.shape[0])
+            if (metric in ["standard", "FP", "FN"])
+            else B_star(  # delta / 2 to have conditional bound guaranteed wp 1-delta (see Prop 3)
+                (delta / 2) / k2, selected_errs_count, selected_samples.shape[0]
+            )
+        )
 
         if (selected_samples.shape[0] == 0) or (
             selected_errs_count == selected_samples.shape[0]
@@ -277,7 +283,7 @@ def sgp_greedy_search(delta, r_star, Sn, metric, theta_min=0.5, theta_max=1, k2=
 def sgp_at_targets(
     train_set,
     test_set,
-    delta=0.001,
+    delta=DELTA,
     metric_targets=[i / 100 for i in range(1, 15)],
     metric="standard",
     mode="greedy",
@@ -422,7 +428,6 @@ def bound_evo_w_theta(
         "SP": "FP",
     }
     Sn = Sn.sort_values("kappa", ascending=True)
-    kappas = sorted(np.array(Sn.kappa))
     bounds, thetas = [], np.linspace(theta_min, theta_max, k2)
     numerators, denominators = [], []
 
@@ -435,7 +440,14 @@ def bound_evo_w_theta(
         if selected_errs_count == 0:
             break
 
-        b = B_star(delta / k2, selected_errs_count, selected_samples.shape[0])
+        b = (
+            B_star(delta / k2, selected_errs_count, selected_samples.shape[0])
+            if (metric in ["standard", "FP", "FN"])
+            else B_star(
+                (delta / 2) / k2, selected_errs_count, selected_samples.shape[0]
+            )
+        )
+
         if (selected_samples.shape[0] == 0) or (
             selected_errs_count == selected_samples.shape[0]
         ):
@@ -449,7 +461,7 @@ def bound_evo_w_theta(
         if frac_details:
             numerators.append(b)
             d = upper_bound_denominator(
-                metric, selected_samples, delta / k2, Sn.shape[0]
+                metric, selected_samples, (delta / 2) / k2, Sn.shape[0]
             )
             denominators.append(d)
 
@@ -500,7 +512,7 @@ def reachable_bounds(metrics_list, Sn, delta, theta_min=0.5, theta_max=1, k2=K2)
     return res_dico
 
 
-def pos_propor_w_theta(Sn, k2=K2):
+def pos_propor_w_theta(Sn, k2=K2, theta_min=0.5, theta_max=1):
     """Compute positive-class proportion among samples selected by θ.
 
     Args:
@@ -511,8 +523,7 @@ def pos_propor_w_theta(Sn, k2=K2):
         (np.ndarray, list[float]): (thetas, positive proportions).
     """
     Sn = Sn.sort_values("kappa", ascending=True)
-    kappas = np.array(Sn.kappa)
-    pos_propor, thetas = [], np.linspace(kappas[0], kappas[-1], k2)
+    pos_propor, thetas = [], np.linspace(theta_min, theta_max, k2)
 
     for theta in thetas:
 
@@ -536,7 +547,7 @@ def runtime(sim_df, mode: str = "dicho", k2: int = 20, theta_min=0.5, theta_max=
     t0 = datetime.now()
     if mode == "dicho":
         res = sgp_dicho(
-            delta=1e-3,
+            delta=DELTA,
             r_star=0.05,
             Sn=sim_df,
             metric="standard",
@@ -545,7 +556,7 @@ def runtime(sim_df, mode: str = "dicho", k2: int = 20, theta_min=0.5, theta_max=
         )
     elif mode == "greedy":
         res = sgp_greedy_search(
-            delta=1e-3,
+            delta=DELTA,
             r_star=0.05,
             Sn=sim_df,
             metric="standard",
@@ -671,7 +682,7 @@ def mean_abs_diff(u, v):
     return np.mean(diffs)
 
 
-def ABC(ds, metric, theta_min=0.5, theta_max=1, k2=K2, delta=5e-3):
+def ABC(ds, metric, theta_min=0.5, theta_max=1, k2=K2, delta=DELTA):
     """Compute average absolute gap between bound and test metric vs θ.
 
     Args:
@@ -718,7 +729,7 @@ def our_bound(selected_samples, metric, delta, n):
     """
     loss = "FP" if (metric in ["FPR", "PPV"]) else "FN"
     selected_errs_count = emp_errs_count(selected_samples, loss=loss)
-    b = B_star(delta, selected_errs_count, selected_samples.shape[0])
+    b = B_star(delta / 2, selected_errs_count, selected_samples.shape[0])
     B = bound(b, selected_samples, delta, metric, n=n)
     return B
 
