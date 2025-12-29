@@ -15,6 +15,7 @@ from matplotlib.lines import Line2D
 from matplotlib import MatplotlibDeprecationWarning
 from python_scripts.sgp_utils import *
 from matplotlib.ticker import AutoMinorLocator
+from python_scripts.sgp_utils import DELTA
 
 warnings.filterwarnings("ignore", category=MatplotlibDeprecationWarning)
 
@@ -207,9 +208,9 @@ def show_cifar10(t: torch.Tensor, title=None):
 def plot_all_metrics(
     train_set: pd.DataFrame,
     test_set: pd.DataFrame,
-    delta: float,
     color_map: dict,
     title: str = "",
+    delta: float = DELTA,
     xlim1: list = [0, 1],
     xlim2: list = [0, 1],
     ylim1: list = [0, 1],
@@ -268,7 +269,7 @@ def plot_all_metrics(
                 thetas, bounds = bound_evo_w_theta(
                     metric,
                     train_set,
-                    delta,
+                    delta=DELTA,
                     theta_min=theta_min,
                     theta_max=theta_max,
                     k2=50,

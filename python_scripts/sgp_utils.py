@@ -28,8 +28,8 @@ from python_scripts.math_utils import *
 from python_scripts.preprocessing import *
 
 # Parameters k1 and k2 from the paper (see Algo 1-2 resp.)
-K1 = 6
 K2 = 50
+K1 = int(np.log(K2 + 1) / np.log(2)) + 1
 DELTA = 5e-3
 
 
@@ -131,7 +131,7 @@ def bound(b, selected_samples, delta, metric, n):
         n (int): Total sample size.
 
     Returns:
-        float: Metric bound in (0,1), or NaN if invalid.
+        float: Metric bound
     """
     if metric in ["standard", "FP", "FN"]:
         B = b
@@ -139,12 +139,8 @@ def bound(b, selected_samples, delta, metric, n):
         B = b / abs(upper_bound_denominator(metric, selected_samples, delta, n))
     else:  # PPV, SE, SP
         B = 1 - b / abs(upper_bound_denominator(metric, selected_samples, delta, n))
-    if (B >= 1) or (
-        B <= 0
-    ):  # should not happen, but no proof can be given that it cannot happen in pathological datasets
-        return np.nan
-    else:
-        return B
+
+    return B
 
 
 def satisfied(bound, r_star, metric):
@@ -231,7 +227,6 @@ def sgp_greedy_search(delta, r_star, Sn, metric, theta_min=0.5, theta_max=1, k2=
         "SE": "FN",
         "SP": "FP",
     }
-    Sn = Sn.sort_values("kappa", ascending=True)
     thetas = np.linspace(theta_min, theta_max, k2)
 
     for theta in thetas:
@@ -265,8 +260,6 @@ def sgp_greedy_search(delta, r_star, Sn, metric, theta_min=0.5, theta_max=1, k2=
             return {}
 
         B = bound(b, selected_samples, delta / k2, metric, n=Sn.shape[0])
-        if np.isnan(B):
-            return {}
 
         if satisfied(B, r_star, metric):
             return {
@@ -356,7 +349,7 @@ def sgp_at_targets_on_imbalanced_sets(
     proportions_of_1,
     metric_targets,
     sgp_df,
-    delta,
+    delta=DELTA,
     mode="dicho",
     k2=K2,
     metric="standard",
@@ -456,8 +449,7 @@ def bound_evo_w_theta(
             break
 
         B = bound(b, selected_samples, delta / k2, metric, n=Sn.shape[0])
-        if np.isnan(B):
-            break
+
         if frac_details:
             numerators.append(b)
             d = upper_bound_denominator(
@@ -467,9 +459,6 @@ def bound_evo_w_theta(
 
         bounds.append(B)
 
-    bounds = bounds[
-        :-1
-    ]  # discarding the bound corresponding to last theta (only one sample in selected set)
     while len(bounds) < len(thetas):
         bounds.append(np.nan)
         if frac_details:
@@ -481,7 +470,7 @@ def bound_evo_w_theta(
     return thetas, bounds
 
 
-def reachable_bounds(metrics_list, Sn, delta, theta_min=0.5, theta_max=1, k2=K2):
+def reachable_bounds(metrics_list, Sn, delta=DELTA, theta_min=0.5, theta_max=1, k2=K2):
     """Compute θ/coverage grids and bounds for a list of metrics.
 
     Args:
@@ -571,7 +560,13 @@ def runtime(sim_df, mode: str = "dicho", k2: int = 20, theta_min=0.5, theta_max=
 
 
 def joint_control(
-    metrics_and_targets, sgp_df, delta, theta_min=0.5, theta_max=1, plot=False, k2=K2
+    metrics_and_targets,
+    sgp_df,
+    delta=DELTA,
+    theta_min=0.5,
+    theta_max=1,
+    plot=False,
+    k2=K2,
 ):
     """Find θ intervals satisfying multiple metric targets (optionally plot).
 
@@ -714,7 +709,7 @@ def ABC(ds, metric, theta_min=0.5, theta_max=1, k2=K2, delta=DELTA):
     return mean_abs_diff(bounds, emp_metrics)
 
 
-def our_bound(selected_samples, metric, delta, n):
+def our_bound(selected_samples, metric, n, delta=DELTA):
     """
     Compute our guaranteed conditional metric bound (to be compared to external reference)
 
@@ -734,7 +729,7 @@ def our_bound(selected_samples, metric, delta, n):
     return B
 
 
-def eq11_bound(selected_samples, metric, delta):
+def eq11_bound(selected_samples, metric, delta=DELTA):
     """
     Compute conditional metric bound with Eq. (11) from (Balsubramani et al., 2019)
 
