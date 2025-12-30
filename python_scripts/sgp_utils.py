@@ -108,7 +108,7 @@ def upper_bound_denominator(metric, selected_samples, delta, n):
     Returns:
         float: Denominator value.
     """
-    d2 = np.sqrt(-n * np.log(delta / 4)) / selected_samples.shape[0]
+    d2 = np.sqrt(n * np.log(2 / delta) / 2) / selected_samples.shape[0]
     if metric == "PPV":
         d1 = selected_samples.y_pred.sum() / selected_samples.shape[0]
     else:
@@ -136,9 +136,9 @@ def bound(b, selected_samples, delta, metric, n):
     if metric in ["standard", "FP", "FN"]:
         B = b
     elif metric in ["FPR", "FNR"]:
-        B = b / abs(upper_bound_denominator(metric, selected_samples, delta, n))
+        B = b / upper_bound_denominator(metric, selected_samples, delta, n)
     else:  # PPV, SE, SP
-        B = 1 - b / abs(upper_bound_denominator(metric, selected_samples, delta, n))
+        B = 1 - b / upper_bound_denominator(metric, selected_samples, delta, n)
 
     return B
 
@@ -247,8 +247,8 @@ def sgp_greedy_search(delta, r_star, Sn, metric, theta_min=0.5, theta_max=1, k2=
         b = (
             B_star(delta / k2, selected_errs_count, selected_samples.shape[0])
             if (metric in ["standard", "FP", "FN"])
-            else B_star(  # delta / 2 to have conditional bound guaranteed wp 1-delta (see Prop 3)
-                (delta / 2) / k2, selected_errs_count, selected_samples.shape[0]
+            else B_star(  # see formula in Prop 3
+                delta / (2 * k2), selected_errs_count, selected_samples.shape[0]
             )
         )
 
@@ -325,7 +325,7 @@ def sgp_at_targets(
 
         if (
             sgp_dico != {} and abs(sgp_dico["bound"] - r_star) < 0.1
-        ):  # we don't want the bound if it's too far from target
+        ):  # we don't want the bound if it's too off target
             theta_star = sgp_dico["theta_star"]
             covered_test_set = test_set.loc[test_set.kappa > theta_star]
             if covered_test_set.shape[0] > 0:
@@ -439,7 +439,7 @@ def bound_evo_w_theta(
             B_star(delta / k2, selected_errs_count, selected_samples.shape[0])
             if (metric in ["standard", "FP", "FN"])
             else B_star(
-                (delta / 2) / k2, selected_errs_count, selected_samples.shape[0]
+                delta / (2 * k2), selected_errs_count, selected_samples.shape[0]
             )
         )
 
@@ -455,7 +455,7 @@ def bound_evo_w_theta(
         if frac_details:
             numerators.append(b)
             d = upper_bound_denominator(
-                metric, selected_samples, (delta / 2) / k2, Sn.shape[0]
+                metric, selected_samples, delta / (2 * k2), Sn.shape[0]
             )
             denominators.append(d)
 
