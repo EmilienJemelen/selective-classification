@@ -227,7 +227,7 @@ def sgp_greedy_search(delta, r_star, Sn, metric, theta_min=0.5, theta_max=1, k2=
         "SE": "FN",
         "SP": "FP",
     }
-    thetas = np.linspace(theta_min, theta_max, k2)
+    thetas = np.linspace(theta_min, theta_max, k2)[:-1]
 
     for theta in thetas:
         try:
@@ -323,7 +323,9 @@ def sgp_at_targets(
         else:
             raise ValueError('mode should be either "greedy" or "dicho"')
 
-        if sgp_dico != {}:
+        if (
+            sgp_dico != {} and abs(sgp_dico["bound"] - r_star) < 0.1
+        ):  # we don't want the bound if it's too far from target
             theta_star = sgp_dico["theta_star"]
             covered_test_set = test_set.loc[test_set.kappa > theta_star]
             if covered_test_set.shape[0] > 0:
@@ -459,6 +461,7 @@ def bound_evo_w_theta(
 
         bounds.append(B)
 
+    bounds = bounds[:-1]
     while len(bounds) < len(thetas):
         bounds.append(np.nan)
         if frac_details:

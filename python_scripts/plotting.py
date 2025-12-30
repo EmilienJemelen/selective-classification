@@ -51,6 +51,8 @@ def metric_plots(
             linestyle=style,
             linewidth=2,  # thicker lines
             alpha=0.9,  # slight transparency
+            marker="o",
+            markersize=3,
         )
 
     plt.xlabel(line["x_axis_name"], fontsize=12)
