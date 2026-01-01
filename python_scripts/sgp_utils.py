@@ -451,17 +451,16 @@ def bound_evo_w_theta(
             break
 
         B = bound(b, selected_samples, delta / k2, metric, n=Sn.shape[0])
-
+        d = upper_bound_denominator(metric, selected_samples, delta / k2, Sn.shape[0])
+        if d < 0:  # => bound is negative or greater than 1 (non-informative)
+            break
         if frac_details:
             numerators.append(b)
-            d = upper_bound_denominator(
-                metric, selected_samples, delta / (2 * k2), Sn.shape[0]
-            )
             denominators.append(d)
 
         bounds.append(B)
 
-    bounds = bounds[:-1]
+    bounds = bounds[:-1]  # because at theta max selected set is empty
     while len(bounds) < len(thetas):
         bounds.append(np.nan)
         if frac_details:
@@ -525,7 +524,7 @@ def pos_propor_w_theta(Sn, k2=K2, theta_min=0.5, theta_max=1):
     return thetas, pos_propor
 
 
-def runtime(sim_df, mode: str = "dicho", k2: int = 20, theta_min=0.5, theta_max=1):
+def runtime(sim_df, mode: str = "dicho", k2: int = K2, theta_min=0.5, theta_max=1):
     """Measure wall-time (seconds) for SGP search mode on `sim_df`.
 
     Args:
@@ -680,7 +679,7 @@ def mean_abs_diff(u, v):
     return np.mean(diffs)
 
 
-def ABC(ds, metric, theta_min=0.5, theta_max=1, k2=K2, delta=DELTA):
+def ABC(ds, metric, theta_min=0.5, theta_max=1, k2=30, delta=DELTA):
     """Compute average absolute gap between bound and test metric vs θ.
 
     Args:
