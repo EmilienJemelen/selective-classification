@@ -728,7 +728,8 @@ def our_bound(selected_samples, metric, n, delta=DELTA):
     selected_errs_count = emp_errs_count(selected_samples, loss=loss)
     b = B_star(delta / 2, selected_errs_count, selected_samples.shape[0])
     B = bound(b, selected_samples, delta, metric, n=n)
-    return B
+
+    return B if (B > 0 and B < 1) else np.nan
 
 
 def eq11_bound(selected_samples, metric, delta=DELTA):
