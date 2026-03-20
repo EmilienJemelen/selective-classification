@@ -1,4 +1,4 @@
-Implementation of the paper: _Beyond Accuracy: Controlling Broad Error Types in Selective Classification_
+Code of the paper: _Beyond Accuracy: Controlling Broad Error Types in Selective Classification_
 
 ## Setup and Reproducing Results
 
