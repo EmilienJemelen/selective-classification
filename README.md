@@ -1,4 +1,4 @@
-Code of the paper: _Beyond Accuracy: Controlling Broad Error Types in Selective Classification_
+Aim of this package: provide tools to control broad error types in Selective Classification.
 
 ## Setup and Reproducing Results
 
