@@ -1,5 +1,3 @@
-﻿## Algorithms for Selective Metrics Control in Neural Networks
-
 Implementation of the paper: _Beyond Accuracy: Controlling Broad Error Types in Selective Classification_
 
 ## Setup and Reproducing Results
