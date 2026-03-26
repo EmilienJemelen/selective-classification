@@ -732,7 +732,7 @@ def our_bound(selected_samples, metric, n, delta=DELTA):
     return B if (B > 0 and B < 1) else np.nan
 
 
-def eq11_bound(selected_samples, metric, delta=DELTA):
+def eq11_bound(selected_samples, metric, delta=DELTA, detailed=False):
     """
     Compute conditional metric bound with Eq. (11) from (Balsubramani et al., 2019)
 
@@ -763,4 +763,6 @@ def eq11_bound(selected_samples, metric, delta=DELTA):
         b = np.sqrt(-2 * np.log(delta) / selected_samples.y_pred.sum())
         return a - b
 
+    if detailed:
+        return a, b
     return a + b
