@@ -10,6 +10,7 @@ import numpy as np
 import pandas as pd
 import scipy.special
 from scipy.special import gammaln
+from joblib import Parallel, delayed
 
 # --- Plotting ---
 import matplotlib as mpl
@@ -42,17 +43,17 @@ from IPython.display import clear_output
 # --- Project modules (support .. and ../..) ---
 current_dir = os.getcwd()
 
-root_path = os.path.abspath(os.path.join(current_dir, '..', '..'))
+root_path = os.path.abspath(os.path.join(current_dir, "..", ".."))
 if root_path not in sys.path:
     sys.path.append(root_path)
 
-module_path = os.path.abspath(os.path.join(current_dir, '..'))
+module_path = os.path.abspath(os.path.join(current_dir, ".."))
 if module_path not in sys.path:
     sys.path.append(module_path)
 
 from python_scripts.sgp_utils import *
 from python_scripts.preprocessing import *
-from python_scripts.mcdropout import *     # MC Dropout utilities
+from python_scripts.mcdropout import *  # MC Dropout utilities
 from python_scripts.plotting import *
 from python_scripts.math_utils import *
 from python_scripts import plotting
@@ -60,7 +61,7 @@ from python_scripts import plotting
 # --- Config ---
 warnings.filterwarnings("ignore")
 warnings.filterwarnings("ignore", category=MatplotlibDeprecationWarning)
-mpl.rcParams['figure.dpi'] = 150
+mpl.rcParams["figure.dpi"] = 150
 
 # --- GPU info ---
 print("GPU Available:", torch.cuda.is_available())
