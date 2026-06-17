@@ -777,7 +777,6 @@ def run_one_seed(
     theta_max=1,
     metric="standard",
     mode="dicho",
-    eps=1e-2,
 ):
     """
     run bounds computation and test with one specific seed
@@ -789,8 +788,9 @@ def run_one_seed(
         mode: dicho or greedy, depending on metric and Hypothesis 1
         eps: tolerance due to
             B* being approximated with recursive bisection, stopped when binomial sum is at 1e-5 of delta (see math_utils.py)
+            this does not tell how close our estimate of B* is to the real value of B*
             denominator of metrics bounds can drop as low as 1e-3
-            the resulting ratio can thus propagate the bisection error up to eps=1e-2
+            the resulting ratio can thus propagate the bisection error
     """
     train_set, test_set = train_test_split(sgp_df, seed=s)
     results = sgp_at_targets(
@@ -803,6 +803,11 @@ def run_one_seed(
         theta_min=theta_min,
         theta_max=theta_max,
     )
+
+    # if metric in ["standard", "FP", "FN"]:
+    #   eps = 1e-5
+    # else:
+
     if results.shape[0] > 0:
         failure_df = results.loc[
             results.metric_bound < results.test_metric - eps
