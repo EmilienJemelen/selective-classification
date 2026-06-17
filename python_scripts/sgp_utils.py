@@ -732,7 +732,7 @@ def our_bound(selected_samples, metric, n, delta=DELTA):
     return B if (B > 0 and B < 1) else np.nan
 
 
-def eq11_bound(selected_samples, metric, delta=DELTA):
+def eq11_bound(selected_samples, metric, delta=DELTA, detailed=False):
     """
     Compute conditional metric bound with Eq. (11) from (Balsubramani et al., 2019)
 
@@ -763,4 +763,52 @@ def eq11_bound(selected_samples, metric, delta=DELTA):
         b = np.sqrt(-2 * np.log(delta) / selected_samples.y_pred.sum())
         return a - b
 
+    if detailed:
+        return a, b
     return a + b
+
+
+def run_one_seed(
+    sgp_df,
+    s,
+    metric_targets,
+    delta=DELTA,
+    theta_min=0.5,
+    theta_max=1,
+    metric="standard",
+    mode="dicho",
+    eps=1e-2,
+):
+    """
+    run bounds computation and test with one specific seed
+    intended to make it easy to parallel compute failure rate across seeds later
+    inputs:
+        s: seed
+        metric_targets: the collection of r* values
+        metric: metric which has to be at most r* (find threshold)
+        mode: dicho or greedy, depending on metric and Hypothesis 1
+        eps: tolerance due to
+            B* being approximated with recursive bisection, stopped when binomial sum is at 1e-5 of delta (see math_utils.py)
+            denominator of metrics bounds can drop as low as 1e-3
+            the resulting ratio can thus propagate the bisection error up to eps=1e-2
+    """
+    train_set, test_set = train_test_split(sgp_df, seed=s)
+    results = sgp_at_targets(
+        train_set,
+        test_set,
+        delta=delta,
+        metric_targets=metric_targets,
+        metric=metric,
+        mode=mode,
+        theta_min=theta_min,
+        theta_max=theta_max,
+    )
+    if results.shape[0] > 0:
+        failure_df = results.loc[
+            results.metric_bound < results.test_metric - eps
+        ].copy()
+        if failure_df.shape[0] > 0:
+            return (
+                failure_df[["metric_bound", "test_metric"]].drop_duplicates().shape[0]
+            )
+    return 0
