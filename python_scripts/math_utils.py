@@ -76,12 +76,11 @@ def binom_sum(b, e, n):
         raise ValueError
 
 
-def B_star(delta, e, n, b1=0, b2=1):
+def B_star(delta, e, n, b1=0, b2=1, eps=1e-5):
     """
     b_star recursive dichotomy
     approximate solution up to eps
     """
-    eps = min(delta / 10, 1e-5)
 
     if (e == n) or (n == 0):
         return 1
@@ -89,9 +88,10 @@ def B_star(delta, e, n, b1=0, b2=1):
         return 1 - delta ** (1 / n)
 
     b = (b1 + b2) / 2  # middle of segment
-    if abs(binom_sum(b, e, n) - delta) < eps:
+
+    if b2 - b1 < eps:  # [b1, b2] contains B*
         return b
-    elif binom_sum(b, e, n) <= delta - eps:
+    elif binom_sum(b, e, n) <= delta:
         return B_star(delta, e, n, b1=b1, b2=b)
     else:
         return B_star(delta, e, n, b1=b, b2=b2)

@@ -261,10 +261,18 @@ def sgp_greedy_search(delta, r_star, Sn, metric, theta_min=0.5, theta_max=1, k2=
 
         B = bound(b, selected_samples, delta / k2, metric, n=Sn.shape[0])
 
+        if metric not in ["standard", "FP", "FN"]:
+            denom = upper_bound_denominator(
+                metric, selected_samples, delta / k2, n=Sn.shape[0]
+            )
+        else:
+            denom = 1
+
         if satisfied(B, r_star, metric):
             return {
                 "theta_star": theta,
                 "bound": B,
+                "denom": denom,
                 "delta": delta,
                 "coverage": selected_samples.shape[0] / Sn.shape[0],
                 "emp_metric": emp_metric(selected_samples, metric=metric),
@@ -326,6 +334,7 @@ def sgp_at_targets(
         if (
             sgp_dico != {} and abs(sgp_dico["bound"] - r_star) < 0.1
         ):  # we don't want the bound if it's too off target
+            bound_denom = sgp_dico["denom"] if (mode == "greedy") else 1
             theta_star = sgp_dico["theta_star"]
             covered_test_set = test_set.loc[test_set.kappa > theta_star]
             if covered_test_set.shape[0] > 0:
@@ -336,6 +345,7 @@ def sgp_at_targets(
                 {
                     "metric_target": r_star,
                     "metric_bound": sgp_dico["bound"],
+                    "bound_denom": bound_denom,
                     "theta_star": theta_star,
                     "train_metric": sgp_dico["emp_metric"],
                     "train_coverage": sgp_dico["coverage"],
@@ -787,12 +797,11 @@ def run_one_seed(
         metric: metric which has to be at most r* (find threshold)
         mode: dicho or greedy, depending on metric and Hypothesis 1
         eps: tolerance due to
-            B* being approximated with recursive bisection, stopped when binomial sum is at 1e-5 of delta (see math_utils.py)
-            this does not tell how close our estimate of B* is to the real value of B*
-            denominator of metrics bounds can drop as low as 1e-3
-            the resulting ratio can thus propagate the bisection error
+            B* being approximated with recursive bisection, stopped when the interval is of width 1e-5 (see math_utils.py)
+            denominator of conditional metrics bounds can drop, multiplying this approximation error
+            we set a tolerance of eps corresponding to this bissection approximation error term
     """
-    train_set, test_set = train_test_split(sgp_df, seed=s)
+    train_set, test_set = train_test_split(sgp_df, seed=s, p_train=0.5)
     results = sgp_at_targets(
         train_set,
         test_set,
@@ -804,9 +813,10 @@ def run_one_seed(
         theta_max=theta_max,
     )
 
-    # if metric in ["standard", "FP", "FN"]:
-    #   eps = 1e-5
-    # else:
+    if metric in ["standard", "FP", "FN"]:
+        eps = 1e-5
+    else:
+        eps = 1e-5 / results.bound_denom.min()
 
     if results.shape[0] > 0:
         failure_df = results.loc[
