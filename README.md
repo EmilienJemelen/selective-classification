@@ -29,7 +29,7 @@ repo/
 │   │   ├── train_resnet.ipynb
 │   │   ├── individual_control_{cnn,resnet}.ipynb
 │   │   ├── joint_control_{cnn,resnet}.ipynb
-│   │   └── sgp_set_{{cnn,cnn_MCD},resnet}
+│   │   └── sgp_set_{{cnn,cnn_MCD},resnet} # dataset with confidence, from train_{cnn, resnet} notebook
 │   └── WSI/              # Whole Slide Image (tumor detection) experiments
 │       ├── train_cnn.ipynb
 │       ├── individual_control_cnn.ipynb
@@ -39,8 +39,10 @@ repo/
 |   ├── comparison.ipynb
 │   ├── params_impact.ipynb
 │   ├── runtime_study.ipynb
-│   ├── exec_times_res
-│   └── params_impact_res
+|   ├── failure_rates_control.ipynb
+│   ├── exec_times_res # notebook results
+|   ├── failure_rates # notebook results
+│   └── params_impact_res # notebook results
 ├── python_scripts/       # Shared utility modules
 │   ├── mcdropout.py      # Monte Carlo dropout
 │   ├── sgp_utils.py      # SGP utilities
