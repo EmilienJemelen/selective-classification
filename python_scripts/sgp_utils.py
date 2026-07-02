@@ -115,9 +115,9 @@ def upper_bound_denominator(metric, selected_samples, delta, n):
         d1 = selected_samples.y_true.sum() / selected_samples.shape[0]
 
     if metric in ["FPR", "SP"]:
-        return max(0, 1 - d1 - d2)
+        return max(1e-10, 1 - d1 - d2)
     else:  # FNR, SE, PPV
-        return max(0, d1 - d2)
+        return max(1e-10, d1 - d2)
 
 
 def bound(b, selected_samples, delta, metric, n):
