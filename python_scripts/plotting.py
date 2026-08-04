@@ -274,7 +274,7 @@ def plot_all_metrics(
                     delta=DELTA,
                     theta_min=theta_min,
                     theta_max=theta_max,
-                    k2=50,
+                    k=50,
                 )
                 last_thetas = thetas
 
