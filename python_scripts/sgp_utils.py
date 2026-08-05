@@ -213,13 +213,13 @@ def sgp_greedy_search(delta, r_star, Sn, metric, theta_min=0.5, theta_max=1, k=K
             return {}
 
         b = B_star(delta / k, selected_errs_count, n)  # see formula in Corollary 2
-        if metric in ["SP", "SE", "PPV"]:
-            b = 1 - b
-
         if (n == 0) or (selected_errs_count == n):
             b = 1  # by definition of B^*(.) in Proposition 1.
         if b == 1:
             return {}
+
+        if metric in ["SP", "SE", "PPV"]:
+            b = 1 - b
 
         if satisfied(b, r_star, metric):
             return {
@@ -392,7 +392,7 @@ def bound_evo_w_theta(metric, Sn, delta, theta_min=0.5, theta_max=1, k=K2):
         n = selected_samples.shape[0]
         if selected_errs_count == 0:
             # no mistake on selected subset => no mistake as next iters, so b* is stuck at 1-delta^(1/n)
-            return {}
+            break
 
         b = B_star(delta / k, selected_errs_count, n)  # see formula in Corollary 2
 
@@ -640,7 +640,7 @@ def ABC(ds, metric, theta_min=0.5, theta_max=1, k=30, delta=DELTA):
     return mean_abs_diff(bounds, emp_metrics)
 
 
-def our_bound(selected_samples, metric, n, delta=DELTA):
+def our_bound(selected_samples, metric, delta=DELTA, k=K2):
     """
     Compute our guaranteed conditional metric bound (to be compared to external reference)
 
@@ -653,12 +653,44 @@ def our_bound(selected_samples, metric, n, delta=DELTA):
     Returns:
         float: bound from proposition 2-3
     """
-    loss = "FP" if (metric in ["FPR", "PPV"]) else "FN"
-    selected_errs_count = emp_errs_count(selected_samples, loss=loss)
-    b = B_star(delta / 2, selected_errs_count, selected_samples.shape[0])
-    B = bound(b, selected_samples, delta, metric, n=n)
 
-    return B if (B > 0 and B < 1) else np.nan
+    metric_loss_mapping = {
+        "standard": "standard",
+        "FP": "FP",
+        "FN": "FN",
+        "FPR": "FP",
+        "FNR": "FN",
+        "PPV": "FP",
+        "SE": "FN",
+        "SP": "FP",
+    }
+
+    if metric in ("FPR", "SP"):
+        selected_samples = selected_samples.loc[(selected_samples.y_true == 0)]
+    elif metric in ("FNR", "SE"):
+        selected_samples = selected_samples.loc[(selected_samples.y_true == 1)]
+    elif metric == "PPV":
+        selected_samples = selected_samples.loc[(selected_samples.y_pred == 1)]
+
+    selected_errs_count = emp_errs_count(
+        selected_samples, loss=metric_loss_mapping[metric]
+    )
+
+    n = selected_samples.shape[0]
+    if selected_errs_count == 0:
+        # no mistake on selected subset => no mistake as next iters, so b* is stuck at 1-delta^(1/n)
+        return np.nan
+
+    b = B_star(delta / k, selected_errs_count, n)  # see formula in Corollary 2
+    if (n == 0) or (selected_errs_count == n):
+        b = 1  # by definition of B^*(.) in Proposition 1.
+    if b == 1:
+        return np.nan
+
+    if metric in ["SP", "SE", "PPV"]:
+        b = 1 - b
+
+    return b
 
 
 def eq11_bound(selected_samples, metric, delta=DELTA, detailed=False):
@@ -705,6 +737,7 @@ def run_one_seed(
     theta_min=0.5,
     theta_max=1,
     metric="standard",
+    eps=1e-5,
 ):
     """
     run bounds computation and test with one specific seed
@@ -728,11 +761,6 @@ def run_one_seed(
         theta_min=theta_min,
         theta_max=theta_max,
     )
-
-    if metric in ["standard", "FP", "FN"]:
-        eps = 1e-5
-    else:
-        eps = 1e-5 / results.bound_denom.min()
 
     if results.shape[0] > 0:
         failure_df = results.loc[
