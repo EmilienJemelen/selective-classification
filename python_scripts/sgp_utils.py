@@ -161,17 +161,21 @@ def satisfied(bound, r_star, metric):
 
 
 def sgp_greedy_search(delta, r_star, Sn, metric, theta_min=0.5, theta_max=1, k=K2):
-    """Greedy scan over θ to find the lowest θ satisfying the target bound.
+    """Scan θ upward and evaluate the bound on the grid.
 
     Args:
-        delta (float): Confidence level.
-        r_star (float): Target metric level.
+        delta (float): proba control.
+        r_star (float | None): Target metric level, or None for the full scan.
         Sn (pd.DataFrame): Training set with `kappa`, `y_pred`, `y_true`.
         metric (str): Metric name.
-        k (int): Grid size (Sn-independent).
+        theta_min, theta_max (float): Grid endpoints.
+        k (int): Grid size (Sn-independent), also the Bonferroni divisor
 
     Returns:
-        dict: {'theta_star','bound','delta','coverage','emp_metric'} or {} if none.
+        dict: {'theta_star','bound','delta','coverage','emp_metric'}, or {} if no
+            θ satisfies the target
+        list[dict]: the same records for every admissible θ, in increasing θ
+            order -- when `r_star` is None.
     """
     metric_loss_mapping = {
         "standard": "standard",
@@ -183,61 +187,63 @@ def sgp_greedy_search(delta, r_star, Sn, metric, theta_min=0.5, theta_max=1, k=K
         "SE": "FN",
         "SP": "FP",
     }
+    if metric not in metric_loss_mapping:
+        raise ValueError(f"Unsupported metric: {metric!r}")
+
     thetas = np.linspace(theta_min, theta_max, k)[:-1]
+    path = []
 
     for theta in thetas:
-        try:
-            if selected_samples.shape[0] == 0:
-                return {}
-        except:
-            pass
-
         if metric in ("standard", "FP", "FN"):
             selected_samples = Sn.loc[Sn.kappa >= theta]
         elif metric in ("FPR", "SP"):
             selected_samples = Sn.loc[(Sn.kappa >= theta) & (Sn.y_true == 0)]
         elif metric in ("FNR", "SE"):
             selected_samples = Sn.loc[(Sn.kappa >= theta) & (Sn.y_true == 1)]
-        elif metric == "PPV":
+        else:  # PPV
             selected_samples = Sn.loc[(Sn.kappa >= theta) & (Sn.y_pred == 1)]
-        else:
-            raise ValueError(f"Unsupported metric: {metric!r}")
 
+        n = selected_samples.shape[0]
         selected_errs_count = emp_errs_count(
             selected_samples, loss=metric_loss_mapping[metric]
         )
 
-        n = selected_samples.shape[0]
-        if selected_errs_count == 0:
-            # no mistake on selected subset => no mistake as next iters, so b* is stuck at 1-delta^(1/n)
-            return {}
+        # no mistake on the selected subset => none at later θ either, so b* is
+        # stuck at 1 - delta^(1/n).  (Also covers the empty-selection case.)
+        if n == 0 or selected_errs_count == 0:
+            break
 
         b = B_star(delta / k, selected_errs_count, n)  # see formula in Corollary 2
-        if (n == 0) or (selected_errs_count == n):
-            b = 1  # by definition of B^*(.) in Proposition 1.
+        if selected_errs_count == n:
+            b = 1  # by definition of B^*(.) in Proposition 1
         if b == 1:
-            return {}
+            break
 
-        if metric in ["SP", "SE", "PPV"]:
+        if metric in ("SP", "SE", "PPV"):
             b = 1 - b
 
-        if satisfied(b, r_star, metric):
-            return {
-                "theta_star": theta,
-                "bound": b,
-                "delta": delta,
-                "coverage": selected_samples.shape[0] / Sn.shape[0],
-                "emp_metric": emp_metric(selected_samples, metric=metric),
-            }
+        if r_star is not None and not satisfied(b, r_star, metric):
+            continue
 
-    return {}  # if we never found satisfactory B..
+        record = {
+            "theta_star": theta,
+            "bound": b,
+            "delta": delta,
+            "coverage": n / Sn.shape[0],
+            "emp_metric": emp_metric(selected_samples, metric=metric),
+        }
+        if r_star is not None:
+            return record
+        path.append(record)
+
+    return path if r_star is None else {}  # {} if we never found satisfactory B..
 
 
 def sgp_at_targets(
     train_set,
     test_set,
     delta=DELTA,
-    metric_targets=[i / 100 for i in range(1, 15)],
+    metric_targets=None,
     metric="standard",
     k=K2,
     theta_min=0.5,
@@ -245,52 +251,73 @@ def sgp_at_targets(
 ):
     """Run SGP across multiple target levels and report train/test outcomes.
 
+    The θ grid is scanned once
+
     Args:
         train_set (pd.DataFrame): Training data with `kappa`, `y_pred`, `y_true`.
         test_set (pd.DataFrame): Test data with `kappa`, `y_pred`, `y_true`.
         delta (float): Confidence level.
-        metric_targets (list[float]): Target levels r*.
+        metric_targets (list[float] | None): Target levels r*.
         metric (str): Metric name.
         k (int): Grid size.
+        theta_min, theta_max (float): Grid endpoints.
 
     Returns:
-        pd.DataFrame: One row per target with bounds, θ*, and coverages.
+        pd.DataFrame: One row per retained target with bounds, θ*, and coverages.
     """
-    results = []
-    for r_star in metric_targets:
+    if metric_targets is None:
+        metric_targets = [i / 100 for i in range(1, 15)]
 
-        sgp_dico = sgp_greedy_search(
-            delta,
-            r_star,
-            train_set,
-            metric,
-            theta_min=theta_min,
-            theta_max=theta_max,
-            k=k,
+    path = sgp_greedy_search(
+        delta, None, train_set, metric, theta_min=theta_min, theta_max=theta_max, k=k
+    )
+
+    n_test = test_set.shape[0]
+    test_cache = {}
+    results = []
+
+    for r_star in metric_targets:
+        sgp_dico = next(
+            (rec for rec in path if satisfied(rec["bound"], r_star, metric)), None
         )
 
-        if (
-            sgp_dico != {} and abs(sgp_dico["bound"] - r_star) < 0.1
-        ):  # we don't want the bound if it's too off target
-            theta_star = sgp_dico["theta_star"]
-            covered_test_set = test_set.loc[test_set.kappa > theta_star]
-            if covered_test_set.shape[0] > 0:
-                test_metric = emp_metric(covered_test_set, metric=metric)
-            else:
-                test_metric = np.nan
-            results.append(
-                {
-                    "metric_target": r_star,
-                    "metric_bound": sgp_dico["bound"],
-                    "theta_star": theta_star,
-                    "train_metric": sgp_dico["emp_metric"],
-                    "train_coverage": sgp_dico["coverage"],
-                    "test_metric": test_metric,
-                    "test_coverage": covered_test_set.shape[0] / test_set.shape[0],
-                }
-            )
+        if sgp_dico is None:
+            continue
 
-    return pd.DataFrame(results)
+        theta_star = sgp_dico["theta_star"]
+        if theta_star not in test_cache:
+            covered_test_set = test_set.loc[test_set.kappa > theta_star]
+            n_covered = covered_test_set.shape[0]
+            test_cache[theta_star] = (
+                emp_metric(covered_test_set, metric=metric) if n_covered else np.nan,
+                n_covered / n_test,
+            )
+        test_metric, test_coverage = test_cache[theta_star]
+
+        results.append(
+            {
+                "metric_target": r_star,
+                "metric_bound": sgp_dico["bound"],
+                "theta_star": theta_star,
+                "train_metric": sgp_dico["emp_metric"],
+                "train_coverage": sgp_dico["coverage"],
+                "test_metric": test_metric,
+                "test_coverage": test_coverage,
+            }
+        )
+
+    return pd.DataFrame(
+        results,
+        columns=[
+            "metric_target",
+            "metric_bound",
+            "theta_star",
+            "train_metric",
+            "train_coverage",
+            "test_metric",
+            "test_coverage",
+        ],
+    )
 
 
 def sgp_at_targets_on_imbalanced_sets(
@@ -344,71 +371,15 @@ def sgp_at_targets_on_imbalanced_sets(
 def bound_evo_w_theta(metric, Sn, delta, theta_min=0.5, theta_max=1, k=K2):
     """Trace the metric bound as a function of θ.
 
-    Args:
-        metric (str): Metric name.
-        Sn (pd.DataFrame): Dataset with `kappa`, `y_pred`, `y_true`.
-        delta (float): Confidence level.
-        k (int): Grid size.
-
     Returns:
         (np.ndarray, list[float]): (thetas, bounds) with NaNs for invalid regions.
     """
-    metric_loss_mapping = {
-        "standard": "standard",
-        "FP": "FP",
-        "FN": "FN",
-        "FPR": "FP",
-        "FNR": "FN",
-        "PPV": "FP",
-        "SE": "FN",
-        "SP": "FP",
-    }
-    Sn = Sn.sort_values("kappa", ascending=True)
-    bounds, thetas = [], np.linspace(theta_min, theta_max, k)
-    numerators, denominators = [], []
-
-    for theta in thetas:
-        try:
-            if selected_samples.shape[0] == 0:
-                return {}
-        except:
-            pass
-
-        if metric in ("standard", "FP", "FN"):
-            selected_samples = Sn.loc[Sn.kappa >= theta]
-        elif metric in ("FPR", "SP"):
-            selected_samples = Sn.loc[(Sn.kappa >= theta) & (Sn.y_true == 0)]
-        elif metric in ("FNR", "SE"):
-            selected_samples = Sn.loc[(Sn.kappa >= theta) & (Sn.y_true == 1)]
-        elif metric == "PPV":
-            selected_samples = Sn.loc[(Sn.kappa >= theta) & (Sn.y_pred == 1)]
-        else:
-            raise ValueError(f"Unsupported metric: {metric!r}")
-
-        selected_errs_count = emp_errs_count(
-            selected_samples, loss=metric_loss_mapping[metric]
-        )
-
-        n = selected_samples.shape[0]
-        if selected_errs_count == 0:
-            # no mistake on selected subset => no mistake as next iters, so b* is stuck at 1-delta^(1/n)
-            break
-
-        b = B_star(delta / k, selected_errs_count, n)  # see formula in Corollary 2
-
-        if (n == 0) or (selected_errs_count == n):
-            b = 1  # by definition of B^*(.) in Proposition 1.
-        if b == 1:  # terminal condition og Algo 1
-            break
-
-        if metric in ["SP", "SE", "PPV"]:
-            b = 1 - b
-
-        bounds.append(b)
-
-    while len(bounds) < len(thetas):
-        bounds.append(np.nan)
-
+    thetas = np.linspace(theta_min, theta_max, k)[:-1]
+    path = sgp_greedy_search(
+        delta, None, Sn, metric, theta_min=theta_min, theta_max=theta_max, k=k
+    )
+    bounds = [rec["bound"] for rec in path]
+    bounds += [np.nan] * (len(thetas) - len(bounds))
     return thetas, bounds
 
 
@@ -478,7 +449,7 @@ def runtime(sim_df, k: int = K2, theta_min=0.5, theta_max=1):
 
     res = sgp_greedy_search(
         delta=DELTA,
-        r_star=0.05,
+        r_star=None,
         Sn=sim_df,
         metric="standard",
         theta_min=theta_min,
@@ -729,7 +700,7 @@ def eq11_bound(selected_samples, metric, delta=DELTA, detailed=False):
     return a + b
 
 
-def run_one_seed(
+def run_one_seed_all_targets(
     sgp_df,
     s,
     metric_targets,
@@ -739,17 +710,11 @@ def run_one_seed(
     metric="standard",
     eps=1e-5,
 ):
-    """
-    run bounds computation and test with one specific seed
-    intended to make it easy to parallel compute failure rate across seeds later
-    inputs:
-        s: seed
-        metric_targets: the collection of r* values
-        metric: metric which has to be at most r* (find threshold)
-        eps: tolerance due to
-            B* being approximated with recursive bisection, stopped when the interval is of width 1e-5 (see math_utils.py)
-            denominator of conditional metrics bounds can drop, multiplying this approximation error
-            we set a tolerance of eps corresponding to this bissection approximation error term
+    """One split, one grid pass, every target read off it.
+
+    Returns:
+        (np.ndarray, np.ndarray): (valid, failed) 0/1 arrays aligned with
+        `metric_targets`, summable across seeds.
     """
     train_set, test_set = train_test_split(sgp_df, seed=s, p_train=0.5)
     results = sgp_at_targets(
@@ -762,12 +727,17 @@ def run_one_seed(
         theta_max=theta_max,
     )
 
-    if results.shape[0] > 0:
-        failure_df = results.loc[
-            results.metric_bound < results.test_metric - eps
-        ].copy()
-        if failure_df.shape[0] > 0:
-            return (
-                failure_df[["metric_bound", "test_metric"]].drop_duplicates().shape[0]
-            )
-    return 0
+    valid = np.zeros(len(metric_targets), dtype=np.int64)
+    failed = np.zeros(len(metric_targets), dtype=np.int64)
+    if results.shape[0] == 0:
+        return valid, failed
+
+    # metric_target round-trips through the frame untouched, so equality holds
+    position = {t: i for i, t in enumerate(metric_targets)}
+    for t, bound, test_metric in zip(
+        results.metric_target, results.metric_bound, results.test_metric
+    ):
+        i = position[t]
+        valid[i] = 1
+        failed[i] = bool(bound < test_metric - eps)
+    return valid, failed
