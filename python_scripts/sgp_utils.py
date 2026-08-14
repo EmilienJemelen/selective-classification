@@ -708,7 +708,7 @@ def run_one_seed_all_targets(
     theta_min=0.5,
     theta_max=1,
     metric="standard",
-    eps=1e-5,
+    eps=1e-3,  # epsilon to account for Binomial sum inversion recursive search precision and the noise of estimating R with \hat{R}
 ):
     """One split, one grid pass, every target read off it.
 
