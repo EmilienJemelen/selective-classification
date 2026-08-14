@@ -708,7 +708,7 @@ def run_one_seed_all_targets(
     theta_min=0.5,
     theta_max=1,
     metric="standard",
-    eps=1e-3,  # epsilon to account for Binomial sum inversion recursive search precision and the noise of estimating R with \hat{R}
+    eta=1e-2,  # epsilon to account for Binomial sum inversion recursive search precision and the noise of estimating R with \hat{R}
 ):
     """One split, one grid pass, every target read off it.
 
@@ -716,7 +716,9 @@ def run_one_seed_all_targets(
         (np.ndarray, np.ndarray): (valid, failed) 0/1 arrays aligned with
         `metric_targets`, summable across seeds.
     """
+
     train_set, test_set = train_test_split(sgp_df, seed=s, p_train=0.5)
+    eps = np.sqrt(np.log(1 / eta) / (2 * test_set.shape[0]))
     results = sgp_at_targets(
         train_set,
         test_set,
@@ -739,5 +741,5 @@ def run_one_seed_all_targets(
     ):
         i = position[t]
         valid[i] = 1
-        failed[i] = bool(bound < test_metric - eps)
-    return valid, failed
+        failed[i] = bool(bound < test_metric + eps)
+    return valid, failed, eta
