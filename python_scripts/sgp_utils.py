@@ -12,6 +12,8 @@ from torchvision.datasets import ImageFolder
 from torch.utils.data import DataLoader, Subset, Dataset
 import math
 import scipy.special
+from scipy.stats import beta, binom
+from scipy.optimize import brentq
 import random as rd
 import torch.nn.functional as F
 import torchvision.models as models
@@ -708,7 +710,7 @@ def run_one_seed_all_targets(
     theta_min=0.5,
     theta_max=1,
     metric="standard",
-    eta=1e-2,  # epsilon to account for Binomial sum inversion recursive search precision and the noise of estimating R with \hat{R}
+    eps=0,
 ):
     """One split, one grid pass, every target read off it.
 
@@ -717,8 +719,7 @@ def run_one_seed_all_targets(
         `metric_targets`, summable across seeds.
     """
 
-    train_set, test_set = train_test_split(sgp_df, seed=s, p_train=0.5)
-    eps = np.sqrt(np.log(1 / eta) / (2 * test_set.shape[0]))
+    train_set, test_set = train_test_split(sgp_df, seed=s, p_train=0.75)
     results = sgp_at_targets(
         train_set,
         test_set,
@@ -741,5 +742,33 @@ def run_one_seed_all_targets(
     ):
         i = position[t]
         valid[i] = 1
-        failed[i] = bool(bound < test_metric + eps)
-    return valid, failed, eta
+        failed[i] = bool(bound < test_metric - eps)
+    return valid, failed
+
+
+######## conformal bounds (Angelopoulos)
+mapping = {
+    "FNR": lambda y, p, c: (y == c, p != c),
+    "FPR": lambda y, p, c: (y != c, p == c),
+    "FDR": lambda y, p, c: (p == c, y != c),
+    "error": lambda y, p, c: (np.ones(len(y), bool), y != p),
+}
+
+
+def conformal_bound(
+    metric="FNR",
+    theta=0.5,
+    calibration_set=None,
+    delta=DELTA / K2,
+    positive_class=1,
+    min_subgroup=25,
+):
+    """See LTT sec 3.2. Learn then Test: Calibrating Predictive Algorithms to Achieve Risk Control
+    Angelopoulos et al. (2022)"""
+    d = calibration_set
+    cond, err = mapping[metric](d["y_true"].values, d["y_pred"].values, positive_class)
+    sub = cond & (d["kappa"].values >= theta)
+    m, k = int(sub.sum()), int((err & sub).sum())
+    if m < min_subgroup or k == m:
+        return 1.0
+    return float(beta.ppf(1 - delta, k + 1, m - k))

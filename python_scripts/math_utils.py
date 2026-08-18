@@ -84,17 +84,8 @@ def B_star(delta, e, n, b1=0, b2=1, eps=1e-5):
 
     if (e == n) or (n == 0):
         return 1
-    if e == 0:
-        return 1 - delta ** (1 / n)
 
-    b = (b1 + b2) / 2  # middle of segment
-
-    if b2 - b1 < eps:  # [b1, b2] contains B*
-        return b
-    elif binom_sum(b, e, n) <= delta:
-        return B_star(delta, e, n, b1=b1, b2=b)
-    else:
-        return B_star(delta, e, n, b1=b, b2=b2)
+    return float(beta.ppf(1 - delta, e + 1, n - e))
 
 
 def integers_log_spacing(start, end, num_points=40):

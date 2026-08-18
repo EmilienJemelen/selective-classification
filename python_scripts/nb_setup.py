@@ -11,6 +11,8 @@ import pandas as pd
 import scipy.special
 from scipy.special import gammaln
 from joblib import Parallel, delayed
+from scipy.stats import beta, binom
+from scipy.optimize import brentq
 
 # --- Plotting ---
 import matplotlib as mpl
