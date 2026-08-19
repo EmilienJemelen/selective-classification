@@ -29,9 +29,8 @@ from collections import Counter
 from python_scripts.math_utils import *
 from python_scripts.preprocessing import *
 
-# Parameters k1 and k from the paper (see Algo 1-2 resp.)
-K2 = 50
-K1 = int(np.log(K2 + 1) / np.log(2)) + 1
+# Parameters from the paper (see Algo 1-2 resp.)
+K = 100
 DELTA = 5e-3
 
 
@@ -162,7 +161,7 @@ def satisfied(bound, r_star, metric):
         return True if bound >= r_star else False
 
 
-def sgp_greedy_search(delta, r_star, Sn, metric, theta_min=0.5, theta_max=1, k=K2):
+def sgp_greedy_search(delta, r_star, Sn, metric, theta_min=0.5, theta_max=1, k=K):
     """Scan θ upward and evaluate the bound on the grid.
 
     Args:
@@ -241,19 +240,131 @@ def sgp_greedy_search(delta, r_star, Sn, metric, theta_min=0.5, theta_max=1, k=K
     return path if r_star is None else {}  # {} if we never found satisfactory B..
 
 
+def sgp_multistart_search(
+    delta, r_star, Sn, metric, theta_min=0.5, theta_max=1, k=K, J=8, path=None
+):
+    """Multistart leftward scan with halting, one scan per bin (Algorithm 2).
+
+    The fixed grid is split into `J` consecutive bins.  Each bin is scanned from its
+    rightmost θ leftward and halts at the first θ whose bound misses `r_star`, so bin
+    j contributes the leftmost θ of its accepted suffix -- or nothing at all if its
+    own rightmost θ already fails.  Bounds are computed at δ/J instead of δ/K, hence
+    tighter than in Algorithm 1.
+
+    Args:
+        delta (float): proba control.
+        r_star (float | None): Target metric level, or None to return the bound path.
+        Sn (pd.DataFrame): Training set with `kappa`, `y_pred`, `y_true`.
+        metric (str): Metric name.
+        theta_min, theta_max (float): Grid endpoints.
+        k (int): Grid size (Sn-independent).
+        J (int): Number of bins (Sn-independent), also the Bonferroni divisor.
+        path (list[dict] | None): Precomputed bound path to reuse across targets.
+
+    Returns:
+        list[dict]: Θ as {'theta_star','bound','bin','delta','coverage','emp_metric'}
+            records, one per contributing bin, in increasing θ order; the first one is
+            the coverage-maximizing threshold.  Empty if no bin contributes -- which,
+            per Corollary 2, can happen even though some θ in the grid does satisfy
+            `r_star` (namely when the whole accepted interval sits strictly inside one
+            bin, missing its right endpoint).
+        list[dict]: the same records for *every* θ of the grid, in increasing θ order
+            -- when `r_star` is None.  Unlike Algorithm 1's path, no θ is skipped:
+            failing and vacuous bounds are kept, since they determine where each
+            leftward scan halts.
+    """
+    metric_loss_mapping = {
+        "standard": "standard",
+        "FP": "FP",
+        "FN": "FN",
+        "FPR": "FP",
+        "FNR": "FN",
+        "PPV": "FP",
+        "SE": "FN",
+        "SP": "FP",
+    }
+    if metric not in metric_loss_mapping:
+        raise ValueError(f"Unsupported metric: {metric!r}")
+
+    if path is None:
+        thetas = np.linspace(theta_min, theta_max, k)[:-1]  # same fixed grid as Algo 1
+        bins = np.array_split(thetas, J)  # consecutive blocks of G, Sn-independent
+        if any(G_j.size < 2 for G_j in bins):
+            raise ValueError(f"Each bin needs K_j > 1: {len(thetas)} thetas, J={J}.")
+
+        path = []
+        for j, G_j in enumerate(bins):
+            for theta in G_j:
+                if metric in ("standard", "FP", "FN"):
+                    selected_samples = Sn.loc[Sn.kappa >= theta]
+                elif metric in ("FPR", "SP"):
+                    selected_samples = Sn.loc[(Sn.kappa >= theta) & (Sn.y_true == 0)]
+                elif metric in ("FNR", "SE"):
+                    selected_samples = Sn.loc[(Sn.kappa >= theta) & (Sn.y_true == 1)]
+                else:  # PPV
+                    selected_samples = Sn.loc[(Sn.kappa >= theta) & (Sn.y_pred == 1)]
+
+                n = selected_samples.shape[0]
+                selected_errs_count = (
+                    emp_errs_count(selected_samples, loss=metric_loss_mapping[metric])
+                    if n
+                    else 0
+                )
+
+                # vacuous bound on an empty or fully misclassified stratum, by
+                # definition of B^*(.) in Proposition 1
+                if n == 0 or selected_errs_count == n:
+                    b = 1
+                else:
+                    b = B_star(delta / J, selected_errs_count, n)  # Corollary 2
+
+                if metric in ("SP", "SE", "PPV"):
+                    b = 1 - b
+
+                path.append(
+                    {
+                        "theta_star": theta,
+                        "bound": b,
+                        "bin": j,
+                        "delta": delta,
+                        "coverage": n / Sn.shape[0],
+                        "emp_metric": (
+                            emp_metric(selected_samples, metric=metric) if n else np.nan
+                        ),
+                    }
+                )
+
+    if r_star is None:
+        return path
+
+    Theta = []
+    for j in range(1 + max(rec["bin"] for rec in path)):
+        last = None
+        for rec in reversed([rec for rec in path if rec["bin"] == j]):  # leftward
+            if not satisfied(rec["bound"], r_star, metric):
+                break  # halt at first failure: this bin is over
+            last = rec
+        if last is not None:
+            Theta.append(last)
+
+    return Theta
+
+
 def sgp_at_targets(
     train_set,
     test_set,
     delta=DELTA,
     metric_targets=None,
     metric="standard",
-    k=K2,
+    mode="multistart",
+    k=K,
+    J=8,
     theta_min=0.5,
     theta_max=1,
 ):
     """Run SGP across multiple target levels and report train/test outcomes.
 
-    The θ grid is scanned once
+    The θ grid is scanned once, then reused for every target.
 
     Args:
         train_set (pd.DataFrame): Training data with `kappa`, `y_pred`, `y_true`.
@@ -261,17 +372,35 @@ def sgp_at_targets(
         delta (float): Confidence level.
         metric_targets (list[float] | None): Target levels r*.
         metric (str): Metric name.
+        mode (str): "greedy" for Algorithm 1 (bounds at δ/k, first admissible θ of the
+            upward scan) or "multistart" for Algorithm 2 (bounds at δ/J, leftward scan
+            per bin halting at the first failure).
         k (int): Grid size.
+        J (int): Number of bins -- "multistart" only.
         theta_min, theta_max (float): Grid endpoints.
 
     Returns:
         pd.DataFrame: One row per retained target with bounds, θ*, and coverages.
+            In "multistart" mode a target may be dropped even though some grid θ
+            satisfies it, per Corollary 2.
     """
+    if mode not in ("greedy", "multistart"):
+        raise ValueError(f"Unsupported mode: {mode!r}")
     if metric_targets is None:
         metric_targets = [i / 100 for i in range(1, 15)]
 
-    path = sgp_greedy_search(
-        delta, None, train_set, metric, theta_min=theta_min, theta_max=theta_max, k=k
+    search = sgp_greedy_search if mode == "greedy" else sgp_multistart_search
+    kwargs = {} if mode == "greedy" else {"J": J}
+
+    path = search(
+        delta,
+        None,
+        train_set,
+        metric,
+        theta_min=theta_min,
+        theta_max=theta_max,
+        k=k,
+        **kwargs,
     )
 
     n_test = test_set.shape[0]
@@ -279,9 +408,15 @@ def sgp_at_targets(
     results = []
 
     for r_star in metric_targets:
-        sgp_dico = next(
-            (rec for rec in path if satisfied(rec["bound"], r_star, metric)), None
-        )
+        if mode == "greedy":
+            # the path holds admissible θ only, in increasing order
+            sgp_dico = next(
+                (rec for rec in path if satisfied(rec["bound"], r_star, metric)), None
+            )
+        else:
+            # Θ depends on r*: replay the per-bin halting rule on the cached bounds
+            Theta = search(delta, r_star, train_set, metric, path=path)
+            sgp_dico = Theta[0] if Theta else None  # leftmost accepted θ
 
         if sgp_dico is None:
             continue
@@ -327,7 +462,7 @@ def sgp_at_targets_on_imbalanced_sets(
     metric_targets,
     sgp_df,
     delta=DELTA,
-    k=K2,
+    k=K,
     metric="standard",
 ):
     """Evaluate SGP at multiple class-1 proportions.
@@ -370,22 +505,47 @@ def sgp_at_targets_on_imbalanced_sets(
     return all_propor_dfs
 
 
-def bound_evo_w_theta(metric, Sn, delta, theta_min=0.5, theta_max=1, k=K2):
+def bound_evo_w_theta(
+    metric, Sn, delta, mode="multistart", theta_min=0.5, theta_max=1, k=K, J=8
+):
     """Trace the metric bound as a function of θ.
+
+    Args:
+        mode (str): "greedy" for Algorithm 1 bounds (δ/k, scan truncated at the
+            termination condition) or "multistart" for Algorithm 2 bounds (δ/J,
+            whole grid, so the right arm of the U-shape stays visible).
+        J (int): Number of bins -- "multistart" only.
 
     Returns:
         (np.ndarray, list[float]): (thetas, bounds) with NaNs for invalid regions.
     """
     thetas = np.linspace(theta_min, theta_max, k)[:-1]
-    path = sgp_greedy_search(
-        delta, None, Sn, metric, theta_min=theta_min, theta_max=theta_max, k=k
-    )
-    bounds = [rec["bound"] for rec in path]
+
+    if mode == "greedy":
+        path = sgp_greedy_search(
+            delta, None, Sn, metric, theta_min=theta_min, theta_max=theta_max, k=k
+        )
+    elif mode == "multistart":
+        path = sgp_multistart_search(
+            delta,
+            None,
+            Sn,
+            metric,
+            theta_min=theta_min,
+            theta_max=theta_max,
+            k=k,
+            J=J,
+        )
+    else:
+        raise ValueError(f"Unsupported mode: {mode!r}")
+
+    # vacuous bounds on an empty stratum
+    bounds = [rec["bound"] if rec["coverage"] > 0 else np.nan for rec in path]
     bounds += [np.nan] * (len(thetas) - len(bounds))
     return thetas, bounds
 
 
-def reachable_bounds(metrics_list, Sn, delta=DELTA, theta_min=0.5, theta_max=1, k=K2):
+def reachable_bounds(metrics_list, Sn, delta=DELTA, theta_min=0.5, theta_max=1, k=K):
     """Compute θ/coverage grids and bounds for a list of metrics.
 
     Args:
@@ -416,7 +576,7 @@ def reachable_bounds(metrics_list, Sn, delta=DELTA, theta_min=0.5, theta_max=1, 
     return res_dico
 
 
-def pos_propor_w_theta(Sn, k=K2, theta_min=0.5, theta_max=1):
+def pos_propor_w_theta(Sn, k=K, theta_min=0.5, theta_max=1):
     """Compute positive-class proportion among samples selected by θ.
 
     Args:
@@ -437,7 +597,7 @@ def pos_propor_w_theta(Sn, k=K2, theta_min=0.5, theta_max=1):
     return thetas, pos_propor
 
 
-def runtime(sim_df, k: int = K2, theta_min=0.5, theta_max=1):
+def runtime(sim_df, k: int = K, theta_min=0.5, theta_max=1):
     """Measure wall-time (seconds) for SGP search mode on `sim_df`.
 
     Args:
@@ -470,7 +630,7 @@ def joint_control(
     theta_min=0.5,
     theta_max=1,
     plot=False,
-    k=K2,
+    k=K,
 ):
     """Find θ intervals satisfying multiple metric targets (optionally plot).
 
@@ -613,7 +773,7 @@ def ABC(ds, metric, theta_min=0.5, theta_max=1, k=30, delta=DELTA):
     return mean_abs_diff(bounds, emp_metrics)
 
 
-def our_bound(selected_samples, metric, delta=DELTA, k=K2):
+def our_bound(selected_samples, metric, delta=DELTA, k=K):
     """
     Compute our guaranteed conditional metric bound (to be compared to external reference)
 
@@ -710,14 +870,32 @@ def run_one_seed_all_targets(
     theta_min=0.5,
     theta_max=1,
     metric="standard",
+    mode="multistart",
     eps=0,
+    delta_test=0.05,
 ):
     """One split, one grid pass, every target read off it.
 
+    A target counts as failed only when the held-out set gives significant evidence
+    that the population metric exceeds r*, i.e. when its one-sided Clopper-Pearson
+    lower confidence limit is above r* + eps.
+
     Returns:
         (np.ndarray, np.ndarray): (valid, failed) 0/1 arrays aligned with
-        `metric_targets`, summable across seeds.
+        `metric_targets`, summable across seeds.  `failed` is 0 on splits where the
+        search returned nothing, so sums divide by num_seed.
     """
+
+    metric_loss_mapping = {
+        "standard": "standard",
+        "FP": "FP",
+        "FN": "FN",
+        "FPR": "FP",
+        "FNR": "FN",
+        "PPV": "FP",
+        "SE": "FN",
+        "SP": "FP",
+    }
 
     train_set, test_set = train_test_split(sgp_df, seed=s, p_train=0.75)
     results = sgp_at_targets(
@@ -726,6 +904,7 @@ def run_one_seed_all_targets(
         delta=delta,
         metric_targets=metric_targets,
         metric=metric,
+        mode=mode,
         theta_min=theta_min,
         theta_max=theta_max,
     )
@@ -737,12 +916,26 @@ def run_one_seed_all_targets(
 
     # metric_target round-trips through the frame untouched, so equality holds
     position = {t: i for i, t in enumerate(metric_targets)}
-    for t, bound, test_metric in zip(
-        results.metric_target, results.metric_bound, results.test_metric
+    for t, theta_star, test_metric in zip(
+        results.metric_target, results.theta_star, results.test_metric
     ):
         i = position[t]
         valid[i] = 1
-        failed[i] = bool(bound < test_metric - eps)
+
+        if np.isnan(test_metric):
+            continue
+
+        if delta_test is None:
+            failed[i] = bool(t + eps < test_metric)
+            continue
+
+        # significance-based check: CP lower limit on the held-out estimate
+        covered_test_set = test_set.loc[test_set.kappa >= theta_star]
+        n_cov = covered_test_set.shape[0]
+        c_cov = emp_errs_count(covered_test_set, loss=metric_loss_mapping[metric])
+        lower = beta.ppf(delta_test, c_cov, n_cov - c_cov + 1) if c_cov else 0.0
+        failed[i] = bool(t + eps < lower)
+
     return valid, failed
 
 
@@ -759,7 +952,7 @@ def conformal_bound(
     metric="FNR",
     theta=0.5,
     calibration_set=None,
-    delta=DELTA / K2,
+    delta=DELTA / K,
     positive_class=1,
     min_subgroup=25,
 ):
