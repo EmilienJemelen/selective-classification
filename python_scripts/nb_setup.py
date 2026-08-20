@@ -17,6 +17,7 @@ from scipy.optimize import brentq
 # --- Plotting ---
 import matplotlib as mpl
 import matplotlib.pyplot as plt
+import matplotlib.image as mpimg
 import matplotlib.cm as cm
 import matplotlib.colors as mcolors
 from matplotlib.ticker import AutoMinorLocator

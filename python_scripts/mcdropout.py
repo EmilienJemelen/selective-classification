@@ -7,7 +7,12 @@ import numpy as np
 import pickle
 import pandas as pd
 from torchvision import datasets, transforms
-from torch.utils.data import random_split, DataLoader, ConcatDataset, WeightedRandomSampler
+from torch.utils.data import (
+    random_split,
+    DataLoader,
+    ConcatDataset,
+    WeightedRandomSampler,
+)
 import math
 import scipy.special
 import random as rd
@@ -41,13 +46,13 @@ def mc_var_for_deployed_class(model, loader, device, T=30):
     pred_list = []
     for xb, _ in tqdm(loader, desc="Deterministic pass"):
         xb = xb.to(device, non_blocking=True)
-        logits = model(xb)                    # [B, C]
+        logits = model(xb)  # [B, C]
         pred_list.append(logits.softmax(dim=1).argmax(dim=1).cpu())
     y_pred_det = torch.cat(pred_list, dim=0)  # [N]
 
     # ---- Step 2: MC passes with dropout ON ----
     # If your model had BatchNorm, you'd want eval()+manually set dropout.train().
-    model.train()  # your SmallCNN has no BN, so this is fine.
+    model.train()  # SmallCNN has no BN, so this is fine.
 
     probs_cols = []  # list of [N] tensors: prob of the deterministic class per pass
     offset = 0
@@ -57,17 +62,17 @@ def mc_var_for_deployed_class(model, loader, device, T=30):
         for xb, _ in tqdm(loader, desc=f"MC pass {t+1}/{T}", leave=False):
             xb = xb.to(device, non_blocking=True)
             bsz = xb.shape[0]
-            logits = model(xb)                    # [B, C]
-            probs  = logits.softmax(dim=1)        # [B, C]
-            idx = y_pred_det[offset:offset+bsz].to(xb.device)  # [B]
-            p_det = probs.gather(1, idx.view(-1,1)).squeeze(1) # [B]
+            logits = model(xb)  # [B, C]
+            probs = logits.softmax(dim=1)  # [B, C]
+            idx = y_pred_det[offset : offset + bsz].to(xb.device)  # [B]
+            p_det = probs.gather(1, idx.view(-1, 1)).squeeze(1)  # [B]
             batch_probs.append(p_det.cpu())
             offset += bsz
-        probs_cols.append(torch.cat(batch_probs, dim=0))       # [N]
+        probs_cols.append(torch.cat(batch_probs, dim=0))  # [N]
 
-    mat = torch.stack(probs_cols, dim=1)        # [N, T]
-    mean_prob_detcls = mat.mean(dim=1)          # [N]
-    var_prob_detcls  = mat.var(dim=1, unbiased=False)  # [N]
+    mat = torch.stack(probs_cols, dim=1)  # [N, T]
+    mean_prob_detcls = mat.mean(dim=1)  # [N]
+    var_prob_detcls = mat.var(dim=1, unbiased=False)  # [N]
 
     return y_pred_det, mean_prob_detcls, var_prob_detcls
 
