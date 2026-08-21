@@ -10,7 +10,7 @@ from torchvision.datasets import ImageFolder
 from torch.utils.data import DataLoader, Subset, Dataset
 import math
 import scipy.special
-from scipy.stats import beta
+from scipy.stats import beta, binom, norm, rankdata
 import random as rd
 import torch.nn.functional as F
 import torchvision.models as models
@@ -144,54 +144,23 @@ def integers_exp_spacing(start, end, num_points=40):
     return values.tolist()
 
 
-def simulate_sgp_dataset(n, high_conf_propor=0.7, seed=42):
+def simulate_sgp_dataset(n, high_conf_propor=0.7, ranking=1.0, err_rate=0.19, seed=42):
+    """Binary predictions with Beta-mixture confidence; errors concentrate at low kappa.
+
+    `ranking` sets the kappa_f ranking quality (0 = none, np.inf = Hypothesis 1 holds)
+    without changing the error rate nor the kappa distribution.
     """
-    Simulate a dataset with binary predictions (`y_true`, `y_pred`) and confidence scores (`kappa`).
-    The probability of a mistake (`y_true != y_pred`) decreases as kappa increases.
-
-    Parameters:
-    -----------
-    n : int
-        Number of samples to generate.
-    high_conf_propor : proportion of predictions with high confidence distribution
-    seed : for reproducibility
-
-    Returns:
-    --------
-    pandas.DataFrame
-        DataFrame with columns:
-        - 'y_true': True binary labels.
-        - 'y_pred': Predicted labels (0 or 1).
-        - 'kappa': Confidence score (Beta-distributed).
-    """
-    if seed is not None:
-        np.random.seed(seed)
-
-    # y_true: binary, balanced classes
-    y_true = np.random.choice([0, 1], size=n)
-    # Generate two confidence ditributions using Beta distribution
-    kappa = np.empty(n)
-    match = (
-        np.random.rand(n) < high_conf_propor
-    )  # draw high_conf_propor % of samples with high confidence predictions
-    kappa[match] = beta.rvs(
-        9, 1, size=match.sum()
-    )  # High confidence beta distribution, mean=0.9, variance=8.2e-3
-    kappa[~match] = beta.rvs(
-        3, 2, size=(~match).sum()
-    )  # Lower confidence distribution, mean=0.6, variance=0.02
-
-    # accuracy = 0.7*0.9+0.3*0.6=0.81 in this setting
-
-    # Create y_pred based on mistake probabilities
-    y_pred = np.zeros(n)
-    for i in range(n):
-        if np.random.rand() < kappa[i]:  # very likely if kappa confidence is high
-            y_pred[i] = y_true[i]  # correct prediction
-        else:
-            y_pred[i] = 1 - y_true[i]  # incorrect prediction
-
-    # Create DataFrame
-    df = pd.DataFrame({"y_true": y_true, "y_pred": y_pred, "kappa": kappa})
-
-    return df
+    rng = np.random.default_rng(seed)
+    y_true = rng.integers(0, 2, n)
+    match = rng.random(n) < high_conf_propor
+    kappa = np.where(
+        match,
+        beta.rvs(9, 1, size=n, random_state=rng),
+        beta.rvs(3, 2, size=n, random_state=rng),
+    )
+    z = norm.ppf(rankdata(-kappa) / (n + 1))
+    score = z if np.isinf(ranking) else ranking * z + rng.normal(size=n)
+    err = score >= np.quantile(score, 1 - err_rate)
+    return pd.DataFrame(
+        {"y_true": y_true, "y_pred": np.where(err, 1 - y_true, y_true), "kappa": kappa}
+    )

@@ -11,8 +11,9 @@ import pandas as pd
 import scipy.special
 from scipy.special import gammaln
 from joblib import Parallel, delayed
-from scipy.stats import beta, binom
+from scipy.stats import beta, binom, norm, rankdata
 from scipy.optimize import brentq
+from sklearn.isotonic import isotonic_regression
 
 # --- Plotting ---
 import matplotlib as mpl
@@ -22,6 +23,8 @@ import matplotlib.cm as cm
 import matplotlib.colors as mcolors
 from matplotlib.ticker import AutoMinorLocator
 from matplotlib import MatplotlibDeprecationWarning
+from matplotlib.cm import ScalarMappable
+from matplotlib.colors import LogNorm
 
 # --- PyTorch / TorchVision ---
 import torch
@@ -65,8 +68,3 @@ from python_scripts import plotting
 warnings.filterwarnings("ignore")
 warnings.filterwarnings("ignore", category=MatplotlibDeprecationWarning)
 mpl.rcParams["figure.dpi"] = 150
-
-# --- GPU info ---
-print("GPU Available:", torch.cuda.is_available())
-if torch.cuda.is_available():
-    print("GPU Name:", torch.cuda.get_device_name(0))

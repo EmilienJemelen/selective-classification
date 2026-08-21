@@ -4,6 +4,7 @@ import pandas as pd
 import matplotlib.pyplot as plt
 from matplotlib.lines import Line2D
 from scipy.stats import beta
+from sklearn.isotonic import isotonic_regression
 from python_scripts.math_utils import *
 from python_scripts.preprocessing import *
 
@@ -744,7 +745,7 @@ def run_one_seed_all_targets(
     theta_max=1,
     metric="standard",
     mode="multistart",
-    delta_test=0.01,
+    delta_test=0.05,
 ):
     """One split, one grid pass, every target read off it.
 
@@ -807,3 +808,48 @@ def run_one_seed_all_targets(
             failed[i] = bool(t < lower)
 
     return valid, failed
+
+
+def bound_path(Sn, metric, delta=DELTA, theta_min=0, theta_max=1, k=K, J=J):
+    path = sgp_multistart_search(
+        delta, None, Sn, metric, theta_min=theta_min, theta_max=theta_max, k=k, J=J
+    )
+    b = np.array([r["bound"] for r in path if not r["vacuous"]], dtype=float)
+    return -b if metric in LOWER_BOUNDED else b
+
+
+def unimodal_fit(b):
+    best, fit = np.inf, None
+    for m in range(-1, len(b)):
+        left = isotonic_regression(b[: m + 1], increasing=False) if m >= 0 else []
+        right = (
+            isotonic_regression(b[m + 1 :], increasing=True) if m + 1 < len(b) else []
+        )
+        cand = np.concatenate([left, right])
+        sse = ((b - cand) ** 2).sum()
+        if sse < best:
+            best, fit = sse, cand
+    return fit
+
+
+def ushape_area(b):
+    return float(np.abs(b - unimodal_fit(b)).sum() / K)
+
+
+def errs_mask(samples, loss="standard"):
+    if loss == "standard":
+        return samples.y_pred != samples.y_true
+    elif loss == "FP":
+        return (samples.y_pred == 1) & (samples.y_true == 0)
+    else:
+        return (samples.y_pred == 0) & (samples.y_true == 1)
+
+
+def h1_transport(Sn, metric):
+    st = stratify(Sn, metric).sort_values("kappa", ascending=False)
+    L = errs_mask(st, METRIC_LOSS[metric]).values.astype(int)
+    n_err, n_ok = int(L.sum()), int((L == 0).sum())
+    if n_err == 0 or n_ok == 0:
+        return 0.0, np.nan, True
+    cost = float(np.abs(np.cumsum(L) - np.cumsum(np.sort(L))).sum())
+    return cost, 1 - cost / (n_ok * n_err), bool(cost == 0)
