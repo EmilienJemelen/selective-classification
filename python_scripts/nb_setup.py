@@ -21,6 +21,7 @@ import matplotlib.pyplot as plt
 import matplotlib.image as mpimg
 import matplotlib.cm as cm
 import matplotlib.colors as mcolors
+from matplotlib.lines import Line2D
 from matplotlib.ticker import AutoMinorLocator
 from matplotlib import MatplotlibDeprecationWarning
 from matplotlib.cm import ScalarMappable

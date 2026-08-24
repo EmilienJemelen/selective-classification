@@ -935,3 +935,21 @@ def completeness_record(path, r_star, metric, delta=DELTA):
         "n_accepted": int(mask.sum()),
         "contiguous": is_contiguous(mask),
     }
+
+
+def run_one(n, ranking, seed, metrics, r_stars, theta_min, theta_max, delta):
+    """All records for one simulated dataset, shared across metrics and targets."""
+    out = []
+    sim = simulate_sgp_dataset(n, ranking=ranking, seed=seed)
+    for metric in metrics:
+        path = sgp_multistart_search(
+            delta, None, sim, metric, theta_min=theta_min, theta_max=theta_max
+        )
+        _, auc_emp, _ = h1_transport(sim, metric)
+        for r_star in r_stars:
+            rec = completeness_record(path, r_star, metric, delta=delta)
+            if rec is None:  # no threshold of the grid meets r*
+                continue
+            rec.update(metric=metric, n=n, ranking=ranking, seed=seed, auc_emp=auc_emp)
+            out.append(rec)
+    return out
