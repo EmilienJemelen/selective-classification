@@ -853,3 +853,85 @@ def h1_transport(Sn, metric):
         return 0.0, np.nan, True
     cost = float(np.abs(np.cumsum(L) - np.cumsum(np.sort(L))).sum())
     return cost, 1 - cost / (n_ok * n_err), bool(cost == 0)
+
+
+def accepted_mask(path, r_star, metric):
+    """Grid thresholds whose bound meets r*, using Algorithm 2's own accept test.
+
+    Args:
+        path (list[dict]): Raw bound path over the whole grid, at level delta/J.
+        r_star (float): Target level.
+        metric (str): Metric name.
+
+    Returns:
+        np.ndarray: Boolean mask over the grid, in increasing theta order.
+    """
+    return np.array(
+        [
+            (not rec["vacuous"]) and satisfied(rec["bound"], r_star, metric)
+            for rec in path
+        ],
+        dtype=bool,
+    )
+
+
+def oracle_index(path, r_star, metric):
+    """Index of min{theta in G : B(theta) <= r*}, right-hand side of Corollary 2.
+
+    Returns:
+        int | None: None when no threshold of the grid meets r*.
+    """
+    idx = np.flatnonzero(accepted_mask(path, r_star, metric))
+    return int(idx[0]) if idx.size else None
+
+
+def is_contiguous(mask):
+    """True iff the accepted set is an interval of the grid.
+
+    Quasiconvexity (Lemma 1, under Hypothesis 1) implies contiguity, so this is
+    the observable mechanism through which a violation of Hypothesis 1 can break
+    Corollary 2.
+    """
+    idx = np.flatnonzero(mask)
+    return bool(idx.size == 0 or idx.size == idx[-1] - idx[0] + 1)
+
+
+def completeness_record(path, r_star, metric, delta=DELTA):
+    """Compare the threshold returned by Algorithm 2 with the best bound on G of Corollary 2.
+
+    Status is 'exact' when the two coincide, 'suboptimal' when they do not, and
+    'empty' when Algorithm 2 returns nothing.  Corollary 2 assumes Theta non-empty,
+    so 'empty' runs are not counted: they are a power loss driven by r* and J, and
+    they occur under Hypothesis 1 as well, whenever the accepted set sits strictly
+    inside a bin and misses its right endpoint.
+
+    Returns:
+        dict | None: None when r* is unattainable on the grid (Algorithm 2 then
+            returns nothing either, so the comparison is vacuous).
+    """
+    mask = accepted_mask(path, r_star, metric)
+    i_oracle = oracle_index(path, r_star, metric)
+    if i_oracle is None:
+        return None
+
+    Theta = sgp_multistart_search(delta, r_star, None, metric, path=path)
+    pos = {rec["theta_star"]: i for i, rec in enumerate(path)}
+
+    if not Theta:
+        status, i_algo2, gap_steps, coverage_loss = "empty", None, np.nan, np.nan
+    else:
+        i_algo2 = pos[Theta[0]["theta_star"]]
+        status = "exact" if i_algo2 == i_oracle else "suboptimal"
+        gap_steps = i_algo2 - i_oracle
+        coverage_loss = path[i_oracle]["coverage"] - Theta[0]["coverage"]
+
+    return {
+        "r_star": r_star,
+        "status": status,
+        "theta_oracle": path[i_oracle]["theta_star"],
+        "theta_algo2": None if i_algo2 is None else Theta[0]["theta_star"],
+        "gap_steps": gap_steps,
+        "coverage_loss": coverage_loss,
+        "n_accepted": int(mask.sum()),
+        "contiguous": is_contiguous(mask),
+    }
