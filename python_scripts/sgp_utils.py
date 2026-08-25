@@ -953,3 +953,41 @@ def run_one(n, ranking, seed, metrics, r_stars, theta_min, theta_max, delta):
             rec.update(metric=metric, n=n, ranking=ranking, seed=seed, auc_emp=auc_emp)
             out.append(rec)
     return out
+
+
+LOSS_LABEL = {"standard": "L_01", "FP": "L_FP", "FN": "L_FN"}
+
+
+def discordance_table(datasets, metrics=("standard", "FP", "FN")):
+    """Discordance rate of Hypothesis 1, one row per (dataset, loss).
+
+    Args:
+        datasets (dict): {name: DataFrame with `kappa`, `y_pred`, `y_true`}.
+        metrics (tuple[str]): Metrics whose loss/stratum to evaluate.
+    """
+    rows = []
+    for ds_name, Sn in datasets.items():
+        for metric in metrics:
+            A = stratify(Sn, metric)
+            L = errs_mask(A, METRIC_LOSS[metric]).values.astype(np.int64)
+            n, n_err = L.size, int(L.sum())
+            n_ok = n - n_err
+            cost, auc_emp, holds = h1_transport(Sn, metric)
+            mixed, total = n_ok * n_err, n * (n - 1) // 2
+            rows.append(
+                {
+                    "dataset": ds_name,
+                    "loss": LOSS_LABEL.get(metric, metric),
+                    "n": n,
+                    "n_err": n_err,
+                    "kappa_ties": int(n - A.kappa.nunique()),
+                    "discordant_pairs": int(cost),
+                    "discordance_pct": 100 * (1 - auc_emp) if mixed else np.nan,
+                    "discordance_pct_all_pairs": (
+                        100 * cost / total if total else np.nan
+                    ),
+                    "auc_emp": auc_emp,
+                    "h1_holds": holds,
+                }
+            )
+    return pd.DataFrame(rows)
