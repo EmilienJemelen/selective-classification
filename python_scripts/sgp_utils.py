@@ -9,7 +9,7 @@ from python_scripts.math_utils import *
 from python_scripts.preprocessing import *
 
 # Parameters from the paper (see Algo 1-2 resp.)
-K = 100
+K = 500
 DELTA = 5e-3
 J = 8
 
