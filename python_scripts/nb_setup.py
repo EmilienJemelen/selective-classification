@@ -9,11 +9,13 @@ from datetime import datetime, timedelta
 import numpy as np
 import pandas as pd
 import scipy.special
-from scipy.special import gammaln
+from scipy.special import gammaln, logit, expit
 from joblib import Parallel, delayed
 from scipy.stats import beta, binom, norm, rankdata
 from scipy.optimize import brentq
 from sklearn.isotonic import isotonic_regression
+from sklearn.ensemble import HistGradientBoostingClassifier
+from sklearn.metrics import roc_auc_score, roc_curve
 
 # --- Plotting ---
 import matplotlib as mpl
@@ -40,8 +42,10 @@ from torch.utils.data import (
     WeightedRandomSampler,
 )
 
+import torchvision
 from torchvision import datasets, transforms, models
 from torchvision.models import VGG16_Weights, ResNet18_Weights, resnet18
+import torchxrayvision as xrv
 
 # --- Utilities ---
 from tqdm import tqdm
