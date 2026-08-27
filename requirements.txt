@@ -73,6 +73,7 @@ threadpoolctl
 torch
 torchaudio
 torchvision
+torchxrayvision
 tornado
 tqdm
 traitlets
