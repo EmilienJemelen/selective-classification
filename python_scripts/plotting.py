@@ -366,7 +366,14 @@ def plot_all_metrics(
 
 
 def two_metrics_bounds(
-    metric1, metric2, all_bounds_SR, all_bounds_MCD, num_labels=15, xlim=None, ylim=None
+    metric1,
+    metric2,
+    all_bounds_SR,
+    all_bounds_MCD,
+    num_labels=15,
+    xlim=None,
+    ylim=None,
+    label=None,
 ):
     """
     Compare two metric bounds (e.g., SR vs MCD) on a scatter plot.
@@ -404,7 +411,12 @@ def two_metrics_bounds(
         x1 = all_bounds_SR[metric1]
         y1 = all_bounds_SR[metric2]
         labels = list(zip(all_bounds_SR["thetas"], all_bounds_SR["coverages"]))
-        plt.scatter(x=x1, y=y1, marker="+", label="SR", s=60, linewidths=1.8, zorder=2)
+        if label is not None:
+            plt.scatter(x=x1, y=y1, marker="+", s=60, linewidths=1.8, zorder=2)
+        else:
+            plt.scatter(
+                x=x1, y=y1, marker="+", label="SR", s=60, linewidths=1.8, zorder=2
+            )
 
         # Choose evenly spaced indices along the curve
         indices = np.linspace(0, len(x1) - 1, num=num_labels, dtype=int)
