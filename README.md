@@ -24,12 +24,22 @@ To reproduce the main results, simply run the notebooks in the _/experiments/_ f
 repo/
 ├── requirements.txt      # Python dependencies
 ├── experiments/          # Core experiments
+│   ├── CHEST/            # NIH ChestX-ray14 binary classification (consolidation detection)
+│   │   ├── run_DenseNet.ipynb
+│   │   ├── individual_control.ipynb
+│   │   ├── joint_control.ipynb
+│   │   └── sgp_set_densenet_SR # dataset with confidence, from run_DenseNet notebook
 │   ├── CIFAR/           # CIFAR-10 binary classification (airplane detection)
 │   │   ├── train_cnn.ipynb
 │   │   ├── train_resnet.ipynb
 │   │   ├── individual_control_{cnn,resnet}.ipynb
 │   │   ├── joint_control_{cnn,resnet}.ipynb
 │   │   └── sgp_set_{{cnn,cnn_MCD},resnet} # dataset with confidence, from train_{cnn, resnet} notebook
+│   ├── DIABETES/         # UCI Diabetes 130-US hospitals (30-day readmission prediction)
+│   │   ├── train_trees.ipynb
+│   │   ├── individual_control.ipynb
+│   │   ├── joint_control.ipynb
+│   │   └── sgp_set_tabular_SR # dataset with confidence, from train_trees notebook
 │   └── WSI/              # Whole Slide Image (tumor detection) experiments
 │       ├── train_cnn.ipynb
 │       ├── individual_control_cnn.ipynb
@@ -70,11 +80,23 @@ WSI (Whole Slide Image tumor classification)
 * Training notebook:
     - experiments/WSI/train_cnn.ipynb
 
+CHEST (NIH ChestX-ray14 binary classification: consolidation vs. rest)
+* Model: DenseNet-121 from _torchxrayvision_, pretrained on CheXpert (not trained by us, inference only)
+* Inference notebook:
+    - experiments/CHEST/run_DenseNet.ipynb
+* Data: NIH images to download from https://nihcc.app.box.com/v/ChestXray-NIHCC
+
+DIABETES (UCI Diabetes 130-US hospitals: 30-day readmission vs. rest)
+* Model: gradient-boosted trees (scikit-learn _HistGradientBoostingClassifier_, predictions averaged over 5 seeds)
+* Training notebook:
+    - experiments/DIABETES/train_trees.ipynb
+* Data: fetched automatically via _ucimlrepo_ (id 296) if no local CSV is found
+
 Trained models weights are in the _/models_weights/_ folder.
 
 ## Experiments
 
 __Individual metric control__
-* _individual_control_*.ipynb_ notebooks in both _CIFAR/_ and _WSI/_
+* _individual_control*.ipynb_ notebooks in _CIFAR/_, _WSI/_, _CHEST/_ and _DIABETES/_
 __Joint metric control__
-* _joint_control_*.ipynb_ notebooks in both _CIFAR/_ and _WSI/_
+* _joint_control*.ipynb_ notebooks in _CIFAR/_, _WSI/_, _CHEST/_ and _DIABETES/_
