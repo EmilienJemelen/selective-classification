@@ -72,4 +72,4 @@ from python_scripts import plotting
 # --- Config ---
 warnings.filterwarnings("ignore")
 warnings.filterwarnings("ignore", category=MatplotlibDeprecationWarning)
-mpl.rcParams["figure.dpi"] = 150
+mpl.rcParams["figure.dpi"] = 100
